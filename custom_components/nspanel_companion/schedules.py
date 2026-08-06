@@ -21,7 +21,7 @@ DIRECT_ACTIONS = {
     "switch": {"turn_on", "turn_off", "toggle"},
     "input_boolean": {"turn_on", "turn_off", "toggle"},
     "fan": {"turn_on", "turn_off", "toggle"},
-    "cover": {"open", "close", "set_position", "gradual_open"},
+    "cover": {"open", "close", "set_position", "gradual_open", "gradual_close"},
 }
 
 
@@ -113,7 +113,7 @@ class ScheduleManager:
         if not 0 <= position <= 100:
             raise ValueError("Position must be between 0 and 100")
         script = str(value.get("script_entity_id", "")) or None
-        if action.startswith("gradual_") and (not script or not script.startswith("script.")):
+        if action.startswith("gradual_") and (not script or not script.startswith("script.") or script not in entity_ids):
             raise ValueError("Gradual movement requires a script")
         return {"entity_id": entity_id, "time": clock, "weekdays": weekdays, "action": action,
                 "position": position, "script_entity_id": script, "enabled": bool(value.get("enabled", True))}
