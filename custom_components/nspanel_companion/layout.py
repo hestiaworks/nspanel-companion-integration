@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor"}
+SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor", "camera"}
 CONTROL_ICONS = {
     "auto", "light", "ceiling-light", "floor-lamp", "wall-light", "led-strip", "spotlight",
     "fan", "ceiling-fan", "ventilation", "power", "switch", "plug", "socket", "curtains", "cover",
@@ -62,6 +62,14 @@ def validate_layout(value: Any) -> dict[str, Any]:
                 for option in ("show_timer", "card_tap"):
                     if option in widget and not isinstance(widget[option], bool):
                         raise ValueError(f"{option} must be a boolean")
+            if widget.get("type") == "camera":
+                if str(widget.get("tap_action", "fullscreen")) not in {"none", "fullscreen", "intercom"}:
+                    raise ValueError("Invalid camera tap action")
+                if "incoming_audio" in widget and not isinstance(widget["incoming_audio"], bool):
+                    raise ValueError("incoming_audio must be a boolean")
+                stream_url = str(widget.get("stream_base_url", ""))
+                if stream_url and not stream_url.startswith(("http://", "https://", "rtsp://", "rtsps://")):
+                    raise ValueError("Camera stream URL must use HTTP, HTTPS, RTSP, or RTSPS")
     if len(set(ids)) != len(ids):
         raise ValueError("Page IDs must be unique")
     default_page = str(value.get("default_page_id") or ids[0])
