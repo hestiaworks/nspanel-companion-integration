@@ -252,7 +252,14 @@ class NSPanelCompanionPanel extends HTMLElement {
         this.scryptedDoorbells.push(...items.map((item) => ({ ...item, bridge_id: bridge.id })));
       }
       this.workspaceTab = tab;
-      this.editor = { panel, layout: layout || DEFAULT_LAYOUT(`panel-${Date.now()}`), hasPublishedLayout: Boolean(layout) };
+      const fallback = DEFAULT_LAYOUT(`panel-${Date.now()}`);
+      this.editor = {
+        panel,
+        layout: layout || fallback,
+        hasPublishedLayout: Boolean(layout),
+        draftPages: structuredClone(layout?.pages || []),
+        draftDefaultPageId: layout?.default_page_id || "",
+      };
       if (updateRoute) history.pushState(null, "", this.workspaceRoute(panelId, tab));
     } catch (error) { this.error = error?.message || "Unable to open editor"; }
     finally { this.busy = false; this.render(); }
@@ -277,31 +284,79 @@ class NSPanelCompanionPanel extends HTMLElement {
     } finally { this.busy = false; this.render(); }
   }
 
+  syncPageDraftFromDom() {
+    if (!this.editor) return;
+    this.shadowRoot.querySelectorAll("[data-page-title]").forEach((input) => {
+      const index = Number(input.dataset.pageTitle);
+      if (this.editor.draftPages[index]) this.editor.draftPages[index].title = input.value.trim();
+    });
+  }
+
+  pageIdFor(title) {
+    const base = title.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "").slice(0, 28) || "page";
+    const used = new Set(this.editor.draftPages.map((page) => page.id));
+    if (!used.has(base)) return base;
+    for (let number = 2; number < 100; number += 1) {
+      const candidate = `${base.slice(0, 29)}-${number}`;
+      if (!used.has(candidate)) return candidate;
+    }
+    return `page-${Date.now().toString(36)}`.slice(0, 32);
+  }
+
+  addDraftPage() {
+    if (!this.editor || this.editor.draftPages.length >= 8) return;
+    this.syncPageDraftFromDom();
+    const input = this.shadowRoot.querySelector("#new-page-title");
+    const title = String(input?.value || "").trim();
+    if (!title) { input?.focus(); return; }
+    const page = { id: this.pageIdFor(title), title: title.slice(0, 48), widgets: [] };
+    this.editor.draftPages.push(page);
+    if (!this.editor.draftDefaultPageId) this.editor.draftDefaultPageId = page.id;
+    this.error = "";
+    this.render();
+  }
+
+  updateDraftPage(index, action) {
+    if (!this.editor?.draftPages[index]) return;
+    this.syncPageDraftFromDom();
+    const pages = this.editor.draftPages;
+    const current = pages[index];
+    if (action === "up" && index > 0) [pages[index - 1], pages[index]] = [pages[index], pages[index - 1]];
+    if (action === "down" && index < pages.length - 1) [pages[index + 1], pages[index]] = [pages[index], pages[index + 1]];
+    if (action === "duplicate" && pages.length < 8) {
+      const copy = structuredClone(current);
+      copy.id = this.pageIdFor(`${current.title} copy`);
+      copy.title = `${current.title} copy`.slice(0, 48);
+      pages.splice(index + 1, 0, copy);
+    }
+    if (action === "delete") {
+      pages.splice(index, 1);
+      if (this.editor.draftDefaultPageId === current.id) this.editor.draftDefaultPageId = pages[0]?.id || "";
+    }
+    this.render();
+  }
+
   async saveEditor(form) {
+    this.syncPageDraftFromDom();
     const values = new FormData(form);
-    const controls = [...form.querySelectorAll('[name="control_entity"]:checked')].map((item) => item.value);
-    const climate = String(values.get("climate_entity") || "");
-    const weather = String(values.get("weather_entity") || "");
     const scryptedDoorbell = String(values.get("scrypted_doorbell") || "");
     const [scryptedBridgeId, ...scryptedDeviceParts] = scryptedDoorbell.split("|");
     const scryptedDoorbellId = scryptedDoorbell ? scryptedDeviceParts.join("|") : "";
-    const selectedPages = [
-      ...(climate ? [{ id: "climate", title: "Thermostat", widgets: [{ type: "thermostat", entity_id: climate }] }] : []),
-      ...(weather ? [{ id: "weather", title: "Weather", widgets: [{ type: "weather", entity_id: weather }] }] : []),
-      ...(controls.length ? [{ id: "controls", title: "Controls", widgets: controls.slice(0, 12).map((entity_id) => ({ type: "entity_button", entity_id })) }] : []),
-    ];
-    if (!selectedPages.length && !this.editor.hasPublishedLayout) {
-      this.error = "Add at least one thermostat, weather, or controls page before publishing.";
+    const pages = structuredClone(this.editor.draftPages);
+    if (!pages.length) {
+      this.error = "Create at least one page before publishing.";
       this.render();
       this.selectWorkspaceTab("pages", false);
       return;
     }
-    const pages = selectedPages.length
-      ? selectedPages
-      : (this.editor.layout.pages || []).length
-        ? this.editor.layout.pages
-        : DEFAULT_LAYOUT(`fallback-${Date.now()}`).pages;
-    const requestedDefault = climate ? "climate" : weather ? "weather" : controls.length ? "controls" : this.editor.layout.default_page_id;
+    if (pages.some((page) => !page.title || !(page.widgets || []).length)) {
+      this.error = "Every page needs a name and at least one component before publishing.";
+      this.render();
+      this.selectWorkspaceTab("pages", false);
+      return;
+    }
+    const requestedDefault = this.editor.draftDefaultPageId;
     const defaultPageId = pages.some((page) => page.id === requestedDefault) ? requestedDefault : pages[0].id;
     const layout = {
       schema_version: 1,
@@ -472,6 +527,14 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.shadowRoot.querySelector("#layout-editor")?.addEventListener("submit", (event) => {
       event.preventDefault(); this.saveEditor(event.currentTarget);
     });
+    this.shadowRoot.querySelector("#add-page")?.addEventListener("click", () => this.addDraftPage());
+    this.shadowRoot.querySelector("#new-page-title")?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); this.addDraftPage(); }
+    });
+    this.shadowRoot.querySelectorAll("[data-page-action]").forEach((button) =>
+      button.addEventListener("click", () => this.updateDraftPage(Number(button.dataset.pageIndex), button.dataset.pageAction)));
+    this.shadowRoot.querySelectorAll('[name="default_page"]').forEach((input) =>
+      input.addEventListener("change", () => { this.editor.draftDefaultPageId = input.value; }));
     this.shadowRoot.querySelectorAll("[data-edit]").forEach((button) =>
       button.addEventListener("click", () => this.editPanel(button.dataset.edit, "general")));
     this.shadowRoot.querySelectorAll("[data-test-doorbell]").forEach((button) =>
@@ -557,13 +620,6 @@ class NSPanelCompanionPanel extends HTMLElement {
 
   editorDialog() {
     const { panel, layout } = this.editor;
-    const widgets = (layout.pages || []).flatMap((page) => page.widgets || []);
-    const climate = widgets.find((item) => item.type === "thermostat")?.entity_id || "";
-    const weather = widgets.find((item) => item.type === "weather")?.entity_id || "";
-    const selectedControls = new Set(widgets.filter((item) => item.type === "entity_button").map((item) => item.entity_id));
-    const controlStates = Object.values(this._hass?.states || {}).filter((item) =>
-      ["light", "switch", "fan", "cover", "input_boolean"].includes(item.entity_id.split(".")[0])
-    ).sort((a, b) => this.entityLabel(a).localeCompare(this.entityLabel(b)));
     const doorbell = layout.doorbell || {};
     const selectedScrypted = doorbell.scrypted_bridge_id && doorbell.scrypted_doorbell_id
       ? `${doorbell.scrypted_bridge_id}|${doorbell.scrypted_doorbell_id}` : "";
@@ -584,18 +640,14 @@ class NSPanelCompanionPanel extends HTMLElement {
       </section>
       <form id="layout-editor" class="workspace-layout-form">
         <section class="workspace-panel" data-workspace-panel="pages" ${tab === "pages" ? "" : "hidden"}>
-          <div class="workspace-intro"><h3>Pages</h3><p>Configure the current native dashboard. The full visual page builder will replace these MVP selectors next.</p></div>
-          ${this.editor.hasPublishedLayout ? "" : `<div class="unconfigured-notice"><span class="device-icon">＋</span><div><h3>No pages configured</h3><p>This panel is showing its native setup screen. Select at least one page below and publish when ready.</p></div></div>`}
-          <fieldset><legend>Dashboard</legend>
-            <label>Climate entity<select name="climate_entity">${this.entityOptions(["climate"], climate, "No thermostat page")}</select></label>
-            <label>Weather entity<select name="weather_entity">${this.entityOptions(["weather"], weather, "No weather page")}</select></label>
-            <label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label>
-            <label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label>
-            <small>Off by default. When disabled, the panel follows its Android display timeout and automatic brightness settings.</small>
-          </fieldset>
-          <fieldset><legend>Controls <small>Select up to 12 entities</small></legend><div class="entity-list">
-            ${controlStates.map((item) => `<label class="entity-check"><input type="checkbox" name="control_entity" value="${escapeHtml(item.entity_id)}" ${selectedControls.has(item.entity_id) ? "checked" : ""}><span><b>${escapeHtml(item.attributes?.friendly_name || item.entity_id)}</b><small>${escapeHtml(item.entity_id)}</small></span></label>`).join("") || `<p>No compatible controls found.</p>`}
-          </div></fieldset>
+          <div class="workspace-intro"><h3>Pages</h3><p>Create and arrange the screens people reach by swiping on this panel. Changes stay in this workspace until you publish.</p></div>
+          ${this.editor.draftPages.length ? `<div class="page-list">${this.editor.draftPages.map((page, index) => {
+            const components = (page.widgets || []).map((widget) => widget.type.replace("entity_button", "control"));
+            return `<article class="page-card"><div class="page-order">${index + 1}</div><div class="page-content"><label>Page name<input data-page-title="${index}" maxlength="48" required value="${escapeHtml(page.title)}"></label><div class="page-meta"><label class="default-page"><input type="radio" name="default_page" value="${escapeHtml(page.id)}" ${page.id === this.editor.draftDefaultPageId ? "checked" : ""}> First page</label><span>${components.length ? `${components.length} component${components.length === 1 ? "" : "s"}: ${escapeHtml([...new Set(components)].join(", "))}` : "No components yet"}</span></div></div><div class="page-actions"><button type="button" title="Move up" data-page-action="up" data-page-index="${index}" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" title="Move down" data-page-action="down" data-page-index="${index}" ${index === this.editor.draftPages.length - 1 ? "disabled" : ""}>↓</button><button type="button" data-page-action="duplicate" data-page-index="${index}" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Duplicate</button><button class="danger" type="button" data-page-action="delete" data-page-index="${index}">Delete</button></div></article>`;
+          }).join("")}</div>` : `<div class="unconfigured-notice"><span class="device-icon">＋</span><div><h3>No pages configured</h3><p>This panel is showing its native setup screen. Create its first page below.</p></div></div>`}
+          <div class="add-page"><label>New page name<input id="new-page-title" maxlength="48" placeholder="For example: Climate or Lights" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}></label><button id="add-page" type="button" class="primary" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Add page</button></div>
+          ${this.editor.draftPages.some((page) => !(page.widgets || []).length) ? `<div class="notice draft-note">Pages without components remain drafts and cannot be published yet. Component editing is the next builder step.</div>` : ""}
+          <fieldset class="dashboard-behavior"><legend>Dashboard behavior</legend><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>Off by default. When disabled, the panel follows its Android display timeout and automatic brightness settings.</small></fieldset>
           <div class="actions"><button data-close-editor type="button">Cancel</button><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Publish to panel</button></div>
         </section>
         <section class="workspace-panel" data-workspace-panel="doorbell" ${tab === "doorbell" ? "" : "hidden"}>
@@ -645,7 +697,8 @@ const STYLES = `
   .finder-list{display:grid;gap:10px;margin-top:18px}.finder-panel{display:grid;grid-template-columns:42px 1fr auto;align-items:center;text-align:left;gap:12px;width:100%;padding:13px}.finder-panel span:nth-child(2){min-width:0}.finder-panel b,.finder-panel small{display:block}.finder-panel small,.device-id{font-family:monospace;overflow-wrap:anywhere}.pairing-dialog{width:min(620px,100%);padding:30px}.pairing-dialog-head{display:flex;align-items:center;gap:20px;margin-bottom:28px}.pairing-dialog-head .eyebrow{display:block}.pairing-dialog-body h2{font-size:30px;margin:0 0 10px}.pairing-dialog-body .device-id{margin:0 0 18px}.pairing-help{margin:0 0 28px}.pairing-form{margin:0}.pairing-entry{display:block;width:min(100%,380px);font-size:30px;letter-spacing:.18em;text-align:center;margin:0;padding:18px 20px}.pairing-actions{margin-top:34px;gap:12px}.pairing-actions button{min-width:120px;padding:14px 20px}
   .editor{width:min(980px,100%)}.editor-head{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:start;margin-bottom:18px}.editor-head .device-id{margin-top:5px}.editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}fieldset{border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:16px;margin:0 0 16px}legend{font-size:16px;font-weight:800;padding:0 7px}select{width:100%;margin-top:6px;border:1px solid var(--divider-color,#d8dad6);border-radius:11px;background:var(--secondary-background-color,#f7f7f5);color:inherit;padding:12px;font:inherit}.check{display:flex;gap:9px;align-items:center}.check input,.entity-check input{width:auto;margin:0}.entity-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:280px;overflow:auto}.entity-check{display:flex;align-items:center;gap:10px;margin:0;padding:10px;border:1px solid var(--divider-color,#ddd);border-radius:11px}.entity-check span{min-width:0}.entity-check b,.entity-check small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entity-check small{margin:2px 0 0;font-family:monospace}.panel-tools{background:var(--secondary-background-color,#f7f7f5)}.panel-tools .actions{justify-content:flex-start}
   .workspace{padding:0;overflow:hidden}.workspace .editor-head{grid-template-columns:minmax(0,1fr) auto;padding:24px 26px 18px;margin:0}.workspace-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.workspace-title h2{margin:0}.workspace-tabs{display:flex;gap:4px;padding:0 26px;border-bottom:1px solid var(--divider-color,#ddd);overflow-x:auto}.workspace-tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;color:var(--secondary-text-color,#777);padding:13px 15px;white-space:nowrap}.workspace-tabs button.active{color:var(--primary-text-color,#171916);border-bottom-color:#f36d21}.workspace-panel{padding:24px 26px;max-height:calc(90vh - 165px);overflow:auto}.workspace-panel[hidden]{display:none}.workspace-intro{margin-bottom:18px}.workspace-intro h3{font-size:20px}.workspace-layout-form{margin:0}.settings-card{max-width:680px;border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:18px;margin:0}.settings-card input[readonly]{font-family:monospace;color:var(--secondary-text-color,#777)}.unconfigured-notice{display:flex;align-items:center;gap:14px;border:1px solid #ffc7a8;background:#fff4ed;color:#171916;border-radius:16px;padding:16px;margin-bottom:18px}.unconfigured-notice h3{margin:0 0 4px}.unconfigured-notice p{margin:0}.danger-zone{border-color:#d79a95;background:color-mix(in srgb,var(--card-background-color,#fff) 92%,#b3261e)}.left{justify-content:flex-start}
-  :host([narrow]) main{padding:18px}:host([narrow]) .cards{grid-template-columns:1fr}@media(max-width:720px){main{padding:18px}.editor-grid{grid-template-columns:1fr}.entity-list{grid-template-columns:1fr}.cards{grid-template-columns:1fr}.section-title{align-items:flex-start}.panel-card{min-height:175px}.panel-card>.actions{justify-content:stretch}.panel-card>.actions button{width:100%}.panel-head{grid-template-columns:42px minmax(0,1fr) auto}.device-icon{width:42px;height:42px}.editor-head{grid-template-columns:1fr auto}.editor-head .status{grid-column:1}.pairing{grid-template-columns:1fr auto}.pairing .expires{grid-column:1}.pairing button{grid-column:2;grid-row:2}.workspace .editor-head{padding:20px}.workspace-tabs{padding:0 12px}.workspace-panel{padding:20px}.workspace-tabs button{padding:12px 11px}}
+  .page-list{display:grid;gap:10px;margin-bottom:18px}.page-card{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:14px;background:var(--card-background-color,#fff)}.page-order{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:#ffebe0;color:#d95713;font-weight:900}.page-content{min-width:0}.page-content label{margin:0}.page-content input{margin-top:5px}.page-meta{display:flex;align-items:center;gap:14px;margin-top:9px;color:var(--secondary-text-color,#777);font-size:12px}.default-page{display:flex;align-items:center;gap:6px;white-space:nowrap}.default-page input{width:auto;margin:0}.page-actions{display:grid;grid-template-columns:auto auto;gap:6px}.page-actions button{padding:8px 10px;font-size:12px}.add-page{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px;border:1px dashed var(--divider-color,#bbb);border-radius:16px;padding:14px;margin-bottom:16px}.add-page label{margin:0}.add-page button{min-height:44px}.draft-note{background:#fff4ed;color:#8a430f}.dashboard-behavior{margin-top:18px}
+  :host([narrow]) main{padding:18px}:host([narrow]) .cards{grid-template-columns:1fr}@media(max-width:720px){main{padding:18px}.editor-grid{grid-template-columns:1fr}.entity-list{grid-template-columns:1fr}.cards{grid-template-columns:1fr}.section-title{align-items:flex-start}.panel-card{min-height:175px}.panel-card>.actions{justify-content:stretch}.panel-card>.actions button{width:100%}.panel-head{grid-template-columns:42px minmax(0,1fr) auto}.device-icon{width:42px;height:42px}.editor-head{grid-template-columns:1fr auto}.editor-head .status{grid-column:1}.pairing{grid-template-columns:1fr auto}.pairing .expires{grid-column:1}.pairing button{grid-column:2;grid-row:2}.workspace .editor-head{padding:20px}.workspace-tabs{padding:0 12px}.workspace-panel{padding:20px}.workspace-tabs button{padding:12px 11px}.page-card{grid-template-columns:36px minmax(0,1fr)}.page-actions{grid-column:2;display:flex;flex-wrap:wrap}.page-meta{align-items:flex-start;flex-direction:column;gap:6px}.add-page{grid-template-columns:1fr}.add-page button{width:100%}}
 `;
 
 if (!customElements.get("ha-panel-nspanel-companion-panel")) {
