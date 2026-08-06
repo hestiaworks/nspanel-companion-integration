@@ -13,15 +13,36 @@ const DEFAULT_LAYOUT = (revision) => ({
 });
 
 const CONTROL_ICONS = [
-  ["auto", "Auto", "◇"], ["light", "Light", "✦"], ["ceiling-light", "Ceiling light", "◓"],
-  ["floor-lamp", "Floor lamp", "♧"], ["wall-light", "Wall light", "◖"], ["led-strip", "LED strip", "⋯"],
-  ["spotlight", "Spotlight", "◒"], ["fan", "Fan", "⌁"], ["ceiling-fan", "Ceiling fan", "✣"],
-  ["ventilation", "Ventilation", "≋"], ["power", "Power", "⏻"], ["switch", "Switch", "◉"],
-  ["plug", "Plug", "⌑"], ["socket", "Socket", "⊙"], ["curtains", "Curtains", "▥"], ["cover", "Cover (legacy)", "▥"],
-  ["blinds", "Blinds", "▤"], ["shutter", "Shutter", "▦"], ["garage", "Garage", "▣"],
-  ["radiator", "Radiator", "▥"], ["air-conditioner", "Air conditioner", "▭"], ["fireplace", "Fireplace", "♨"],
-  ["lock", "Lock", "▱"], ["gate", "Gate", "╫"], ["pump", "Pump", "⊕"],
-  ["vacuum", "Vacuum", "◉"], ["speaker", "Speaker", "◖"],
+  ["auto", "Auto", "◇", "all"],
+  ["light", "Light", "✦", "lighting"], ["ceiling-light", "Ceiling light", "◓", "lighting"], ["floor-lamp", "Floor lamp", "♧", "lighting"],
+  ["table-lamp", "Table lamp", "♧", "lighting"], ["wall-light", "Wall light", "◖", "lighting"], ["led-strip", "LED strip", "⋯", "lighting"],
+  ["spotlight", "Spotlight", "◒", "lighting"], ["chandelier", "Chandelier", "✣", "lighting"], ["pendant-light", "Pendant light", "◉", "lighting"],
+  ["outdoor-light", "Outdoor light", "☼", "lighting"], ["night-light", "Night light", "☾", "lighting"], ["desk-lamp", "Desk lamp", "⌁", "lighting"],
+  ["fan", "Fan", "⌁", "air"], ["ceiling-fan", "Ceiling fan", "✣", "air"], ["desk-fan", "Desk fan", "⊛", "air"],
+  ["ventilation", "Ventilation", "≋", "air"], ["air-purifier", "Air purifier", "≋", "air"], ["humidifier", "Humidifier", "♨", "air"],
+  ["dehumidifier", "Dehumidifier", "♨", "air"], ["extractor-fan", "Extractor fan", "⊛", "air"],
+  ["power", "Power", "⏻", "power"], ["switch", "Switch", "◉", "power"], ["plug", "Plug", "⌑", "power"], ["socket", "Socket", "⊙", "power"],
+  ["power-strip", "Power strip", "▭", "power"], ["battery", "Battery", "▯", "power"], ["solar", "Solar", "☼", "power"],
+  ["energy", "Energy", "ϟ", "power"], ["meter", "Meter", "◴", "power"], ["ups", "UPS", "▣", "power"],
+  ["curtains", "Curtains", "▥", "covers"], ["cover", "Cover (legacy)", "▥", "covers"], ["blinds", "Blinds", "▤", "covers"],
+  ["shutter", "Shutter", "▦", "covers"], ["garage", "Garage", "▣", "covers"], ["awning", "Awning", "◩", "covers"],
+  ["window", "Window", "▢", "covers"], ["door", "Door", "▯", "covers"], ["skylight", "Skylight", "◇", "covers"],
+  ["radiator", "Radiator", "▥", "climate"], ["air-conditioner", "Air conditioner", "▭", "climate"], ["fireplace", "Fireplace", "♨", "climate"],
+  ["thermostat", "Thermostat", "◉", "climate"], ["heater", "Heater", "♨", "climate"], ["boiler", "Boiler", "◍", "climate"],
+  ["temperature", "Temperature", "♨", "climate"], ["snowflake", "Cooling", "❄", "climate"],
+  ["lock", "Lock", "▱", "security"], ["unlock", "Unlock", "▱", "security"], ["gate", "Gate", "╫", "security"],
+  ["alarm", "Alarm", "△", "security"], ["shield", "Security", "◇", "security"], ["camera", "Camera", "◉", "security"],
+  ["motion", "Motion", "◌", "security"], ["presence", "Presence", "●", "security"], ["bell", "Doorbell", "♢", "security"],
+  ["kitchen", "Kitchen", "⌂", "appliances"], ["oven", "Oven", "▣", "appliances"], ["microwave", "Microwave", "▣", "appliances"],
+  ["fridge", "Refrigerator", "▯", "appliances"], ["dishwasher", "Dishwasher", "▤", "appliances"], ["washing-machine", "Washing machine", "◉", "appliances"],
+  ["dryer", "Dryer", "◉", "appliances"], ["coffee", "Coffee maker", "♨", "appliances"], ["kettle", "Kettle", "♨", "appliances"],
+  ["vacuum", "Vacuum", "◉", "cleaning"], ["robot-vacuum", "Robot vacuum", "◉", "cleaning"], ["broom", "Broom", "╱", "cleaning"],
+  ["pump", "Pump", "⊕", "water"], ["water", "Water", "●", "water"], ["faucet", "Faucet", "⌐", "water"],
+  ["sprinkler", "Sprinkler", "✣", "water"], ["pool", "Pool", "≈", "water"], ["shower", "Shower", "⋰", "water"],
+  ["speaker", "Speaker", "◖", "media"], ["television", "Television", "▣", "media"], ["music", "Music", "♪", "media"],
+  ["radio", "Radio", "▤", "media"], ["gamepad", "Game console", "✣", "media"], ["projector", "Projector", "◉", "media"],
+  ["bedroom", "Bedroom", "▰", "rooms"], ["bathroom", "Bathroom", "▱", "rooms"], ["office", "Office", "▣", "rooms"],
+  ["garden", "Garden", "♧", "rooms"], ["balcony", "Balcony", "▥", "rooms"], ["stairs", "Stairs", "▟", "rooms"],
 ];
 
 class NSPanelCompanionPanel extends HTMLElement {
@@ -329,14 +350,6 @@ class NSPanelCompanionPanel extends HTMLElement {
       if (input.type === "checkbox") widget[field] = value;
       else if (value) widget[field] = field === "forecast_days" ? Number(value) : value;
       else delete widget[field];
-    });
-    this.shadowRoot.querySelectorAll("[data-icon-search]").forEach((input) => {
-      input.addEventListener("input", () => {
-        const query = input.value.trim().toLowerCase();
-        this.shadowRoot.querySelector(`[data-icon-grid="${CSS.escape(input.dataset.iconSearch)}"]`)?.querySelectorAll("[data-icon-name]").forEach((option) => {
-          option.toggleAttribute("hidden", Boolean(query) && !option.dataset.iconName.includes(query));
-        });
-      });
     });
   }
 
@@ -675,6 +688,51 @@ class NSPanelCompanionPanel extends HTMLElement {
         this.refreshPagePreview();
       });
     });
+    this.shadowRoot.querySelectorAll("[data-icon-search]").forEach((input) => {
+      const picker = input.closest(".icon-picker");
+      const filter = () => {
+        const query = input.value.trim().toLowerCase();
+        const category = picker?.dataset.iconCategory || "all";
+        picker?.querySelectorAll("[data-icon-name]").forEach((option) => {
+          const categoryMatch = category === "all" || option.dataset.iconCategoryOption === category || option.querySelector("input")?.value === "auto";
+          option.toggleAttribute("hidden", !categoryMatch || Boolean(query) && !option.dataset.iconName.includes(query));
+        });
+      };
+      input.addEventListener("input", filter);
+      picker?.querySelectorAll("[data-icon-category-button]").forEach((button) => button.addEventListener("click", () => {
+        picker.dataset.iconCategory = button.dataset.iconCategoryButton;
+        picker.querySelectorAll("[data-icon-category-button]").forEach((item) => item.classList.toggle("active", item === button));
+        filter();
+      }));
+    });
+    this.shadowRoot.querySelectorAll("[data-entity-search]").forEach((input) => {
+      const picker = input.closest(".entity-picker");
+      const results = picker?.querySelector(".entity-results");
+      const filter = () => {
+        const query = input.value.trim().toLowerCase();
+        let shown = 0;
+        results?.querySelectorAll("[data-entity-option]").forEach((option) => {
+          const visible = (!query || option.dataset.entityTerms.includes(query)) && shown < 60;
+          option.toggleAttribute("hidden", !visible);
+          if (visible) shown += 1;
+        });
+        if (results) results.hidden = false;
+      };
+      input.addEventListener("focus", filter);
+      input.addEventListener("input", () => {
+        const hidden = picker?.querySelector("[data-widget-field='entity_id']");
+        if (hidden) hidden.value = "";
+        filter();
+      });
+      results?.querySelectorAll("[data-entity-option]").forEach((option) => option.addEventListener("click", () => {
+        const hidden = picker.querySelector("[data-widget-field='entity_id']");
+        hidden.value = option.dataset.entityOption;
+        input.value = option.dataset.entityLabel;
+        results.hidden = true;
+        this.refreshPagePreview();
+      }));
+      input.addEventListener("keydown", (event) => { if (event.key === "Escape" && results) results.hidden = true; });
+    });
     this.shadowRoot.querySelectorAll("[data-widget-drag]").forEach((handle) => {
       handle.addEventListener("dragstart", (event) => {
         event.stopPropagation();
@@ -807,6 +865,14 @@ class NSPanelCompanionPanel extends HTMLElement {
     return `${state.attributes?.friendly_name || state.entity_id} · ${state.entity_id}`;
   }
 
+  entityPicker(domains, selected, placeholder, field, key) {
+    const states = Object.values(this._hass?.states || {}).filter((item) => domains.includes(item.entity_id.split(".")[0]));
+    states.sort((a, b) => this.entityLabel(a).localeCompare(this.entityLabel(b)));
+    const selectedState = states.find((item) => item.entity_id === selected);
+    const display = selectedState ? this.entityLabel(selectedState) : selected;
+    return `<div class="entity-picker" data-entity-picker="${escapeHtml(key)}"><input type="hidden" ${field("entity_id")} value="${escapeHtml(selected)}"><input class="entity-search" data-entity-search="${escapeHtml(key)}" type="search" value="${escapeHtml(display)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" aria-label="${escapeHtml(placeholder)}"><div class="entity-results" data-entity-results="${escapeHtml(key)}" hidden>${states.map((state) => { const label = this.entityLabel(state); return `<button type="button" data-entity-option="${escapeHtml(state.entity_id)}" data-entity-label="${escapeHtml(label)}" data-entity-terms="${escapeHtml(label.toLowerCase())}"><b>${escapeHtml(state.attributes?.friendly_name || state.entity_id)}</b><small>${escapeHtml(state.entity_id)}</small></button>`; }).join("")}</div></div>`;
+  }
+
   widgetName(widget) {
     if (widget.type === "entity_button") return "Home control";
     if (widget.type === "sensor") return "Sensor";
@@ -818,17 +884,19 @@ class NSPanelCompanionPanel extends HTMLElement {
   iconPicker(page, widget, index, field) {
     const selected = widget.icon || "auto";
     const selectedName = CONTROL_ICONS.find(([id]) => id === selected)?.[1] || "Auto";
-    return `<details class="icon-picker"><summary>Icon <b>${escapeHtml(selectedName)}</b></summary><input class="icon-search" data-icon-search="${escapeHtml(page.id)}-${index}" type="search" placeholder="Search icons…" aria-label="Search icons"><div class="icon-grid" data-icon-grid="${escapeHtml(page.id)}-${index}">${CONTROL_ICONS.map(([id, name, glyph]) => `<label title="${escapeHtml(name)}" data-icon-name="${escapeHtml(name.toLowerCase())}"><input type="radio" name="icon-${escapeHtml(page.id)}-${index}" value="${escapeHtml(id)}" ${field("icon")} ${selected === id ? "checked" : ""}><span>${glyph}</span><small>${escapeHtml(name)}</small></label>`).join("")}</div></details>`;
+    const categories = [["all", "All"], ["lighting", "Lights"], ["air", "Air"], ["power", "Power"], ["covers", "Covers"], ["climate", "Climate"], ["security", "Security"], ["appliances", "Appliances"], ["cleaning", "Cleaning"], ["water", "Water"], ["media", "Media"], ["rooms", "Rooms"]];
+    return `<details class="icon-picker" data-icon-category="all"><summary>Icon <b>${escapeHtml(selectedName)}</b></summary><input class="icon-search" data-icon-search="${escapeHtml(page.id)}-${index}" type="search" placeholder="Search icons…" aria-label="Search icons"><div class="icon-categories">${categories.map(([id, name]) => `<button type="button" data-icon-category-button="${id}" class="${id === "all" ? "active" : ""}">${name}</button>`).join("")}</div><div class="icon-grid" data-icon-grid="${escapeHtml(page.id)}-${index}">${CONTROL_ICONS.map(([id, name, glyph, category]) => `<label title="${escapeHtml(name)}" data-icon-name="${escapeHtml(`${name} ${id}`.toLowerCase())}" data-icon-category-option="${escapeHtml(category)}"><input type="radio" name="icon-${escapeHtml(page.id)}-${index}" value="${escapeHtml(id)}" ${field("icon")} ${selected === id ? "checked" : ""}><span>${glyph}</span><small>${escapeHtml(name)}</small></label>`).join("")}</div></details>`;
   }
 
   widgetEditor(page, widget, index) {
     const field = (name) => `data-widget-field="${name}" data-page-id="${escapeHtml(page.id)}" data-widget-index="${index}"`;
     const entity = widget.entity_id || "";
     let configuration = "";
-    if (widget.type === "thermostat") configuration = `<label>Climate entity<select ${field("entity_id")} required>${this.entityOptions(["climate"], entity, "Select thermostat")}</select><small>Heat, cool, auto, dry, and dual set points follow the capabilities reported by this entity.</small></label>`;
-    if (widget.type === "weather") configuration = `<div class="widget-fields"><label>Weather entity<select ${field("entity_id")} required>${this.entityOptions(["weather"], entity, "Select weather entity")}</select></label><label>Daily forecast<select ${field("forecast_days")}><option value="1" ${Number(widget.forecast_days ?? 5) === 1 ? "selected" : ""}>1 day</option><option value="3" ${Number(widget.forecast_days ?? 5) === 3 ? "selected" : ""}>3 days</option><option value="5" ${Number(widget.forecast_days ?? 5) === 5 ? "selected" : ""}>5 days</option></select></label></div>`;
-    if (widget.type === "entity_button") configuration = `<label>Control entity<select ${field("entity_id")} required>${this.entityOptions(["light", "fan", "switch", "input_boolean", "cover"], entity, "Select light, fan, switch, or cover")}</select><small>The panel automatically uses the correct native control for this entity's capabilities.</small></label>${this.iconPicker(page, widget, index, field)}<div class="control-checks inline-checks"><label class="check"><input type="checkbox" ${field("show_timer")} ${widget.show_timer !== false ? "checked" : ""}> Show timer</label><label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label></div>`;
-    if (widget.type === "sensor") configuration = `<label>Sensor entity<select ${field("entity_id")} required>${this.entityOptions(["sensor", "binary_sensor"], entity, "Select sensor")}</select></label>`;
+    const pickerKey = `${page.id}-${index}`;
+    if (widget.type === "thermostat") configuration = `<label>Climate entity${this.entityPicker(["climate"], entity, "Search thermostats…", field, pickerKey)}</label><small>Heat, cool, auto, dry, and dual set points follow the capabilities reported by this entity.</small>`;
+    if (widget.type === "weather") configuration = `<div class="widget-fields"><label>Weather entity${this.entityPicker(["weather"], entity, "Search weather entities…", field, pickerKey)}</label><label>Daily forecast<select ${field("forecast_days")}><option value="1" ${Number(widget.forecast_days ?? 5) === 1 ? "selected" : ""}>1 day</option><option value="3" ${Number(widget.forecast_days ?? 5) === 3 ? "selected" : ""}>3 days</option><option value="5" ${Number(widget.forecast_days ?? 5) === 5 ? "selected" : ""}>5 days</option></select></label></div>`;
+    if (widget.type === "entity_button") configuration = `<label>Control entity${this.entityPicker(["light", "fan", "switch", "input_boolean", "cover"], entity, "Search lights, fans, switches, and covers…", field, pickerKey)}</label><small>The panel automatically uses the correct native control for this entity's capabilities.</small>${this.iconPicker(page, widget, index, field)}<div class="control-checks inline-checks"><label class="check"><input type="checkbox" ${field("show_timer")} ${widget.show_timer !== false ? "checked" : ""}> Show timer</label><label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label></div>`;
+    if (widget.type === "sensor") configuration = `<label>Sensor entity${this.entityPicker(["sensor", "binary_sensor"], entity, "Search sensors…", field, pickerKey)}</label>`;
     if (widget.type === "controls") configuration = `<div class="notice draft-note">Legacy component: it automatically selects the first four supported controls. Replace it with explicit Home control components for predictable layouts.</div>`;
     return `<article class="widget-card" data-widget-drop="${index}" data-widget-page="${escapeHtml(page.id)}"><div class="widget-drag" draggable="true" data-widget-drag="${index}" data-widget-page="${escapeHtml(page.id)}" title="Drag to reorder">⠿</div><div class="widget-body"><div class="widget-title"><div><span class="eyebrow">Component ${index + 1}</span><h4>${escapeHtml(this.widgetName(widget))}</h4></div><button class="danger" type="button" data-widget-action="delete" data-widget-index="${index}" data-widget-page="${escapeHtml(page.id)}">Remove</button></div>${configuration}<label>Custom label <span class="optional">Optional</span><input ${field("label")} maxlength="48" value="${escapeHtml(widget.label || "")}" placeholder="Use the Home Assistant name"></label></div></article>`;
   }
@@ -943,7 +1011,7 @@ const STYLES = `
   .workspace{padding:0;overflow:hidden}.workspace .editor-head{grid-template-columns:minmax(0,1fr) auto;padding:24px 26px 18px;margin:0}.workspace-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.workspace-title h2{margin:0}.workspace-tabs{display:flex;gap:4px;padding:0 26px;border-bottom:1px solid var(--divider-color,#ddd);overflow-x:auto}.workspace-tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;color:var(--secondary-text-color,#777);padding:13px 15px;white-space:nowrap}.workspace-tabs button.active{color:var(--primary-text-color,#171916);border-bottom-color:#f36d21}.workspace-panel{padding:24px 26px;max-height:calc(90vh - 165px);overflow:auto}.workspace-panel[hidden]{display:none}.workspace-intro{margin-bottom:18px}.workspace-intro h3{font-size:20px}.workspace-layout-form{margin:0}.settings-card{max-width:680px;border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:18px;margin:0}.settings-card input[readonly]{font-family:monospace;color:var(--secondary-text-color,#777)}.unconfigured-notice{display:flex;align-items:center;gap:14px;border:1px solid #ffc7a8;background:#fff4ed;color:#171916;border-radius:16px;padding:16px;margin-bottom:18px}.unconfigured-notice h3{margin:0 0 4px}.unconfigured-notice p{margin:0}.danger-zone{border-color:#d79a95;background:color-mix(in srgb,var(--card-background-color,#fff) 92%,#b3261e)}.left{justify-content:flex-start}
   .page-list{display:grid;gap:10px;margin-bottom:18px}.page-card{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:14px;background:var(--card-background-color,#fff);transition:border-color .15s,opacity .15s,transform .15s}.page-card.active{border-color:#f36d21}.page-card.dragging{opacity:.45}.page-card.drag-over{border-color:#f36d21;transform:translateY(2px)}.page-order{display:flex;flex-direction:column;align-items:center;justify-content:center;width:38px;height:48px;border-radius:12px;background:#ffebe0;color:#d95713;font-weight:900;cursor:grab;user-select:none}.page-order:active{cursor:grabbing}.page-order span{font-size:20px;line-height:16px}.page-order small{margin:3px 0 0;color:inherit;font-size:10px}.page-content{min-width:0}.page-content label{margin:0}.page-content input{margin-top:5px}.page-meta{display:flex;align-items:center;gap:14px;margin-top:9px;color:var(--secondary-text-color,#777);font-size:12px}.page-actions{display:flex;gap:6px;flex-wrap:wrap}.page-actions button{padding:8px 10px;font-size:12px}.component-editor{border:1px solid color-mix(in srgb,#f36d21 55%,var(--divider-color,#ddd));border-radius:18px;background:color-mix(in srgb,var(--card-background-color,#fff) 96%,#f36d21);padding:18px;margin:0 0 18px}.component-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}.component-head h3{font-size:22px;margin:3px 0 4px}.component-head p{margin:0}.widget-list{display:grid;gap:10px}.widget-card{display:grid;grid-template-columns:38px minmax(0,1fr);gap:12px;border:1px solid var(--divider-color,#ddd);border-radius:14px;padding:12px;background:var(--card-background-color,#fff)}.widget-card.dragging{opacity:.45}.widget-card.drag-over{border-color:#f36d21}.widget-drag{display:grid;place-items:center;min-height:48px;border-radius:10px;background:#ffebe0;color:#d95713;font-size:22px;cursor:grab}.widget-title{display:flex;align-items:start;justify-content:space-between;gap:12px}.widget-title h4{font-size:17px;margin:3px 0 2px}.widget-title button{padding:7px 9px;font-size:11px}.widget-fields{display:grid;grid-template-columns:2fr 1fr;gap:10px}.optional{color:var(--secondary-text-color,#777);font-weight:400}.add-widget,.add-page{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px;border:1px dashed var(--divider-color,#bbb);border-radius:16px;padding:14px;margin:16px 0}.add-widget label,.add-page label{margin:0}.add-widget button,.add-page button{min-height:44px}.empty.compact{min-height:110px}.draft-note{background:#fff4ed;color:#8a430f}.dashboard-behavior{margin-top:18px}
   .workspace-page{max-width:1380px}.workspace-page>.workspace{border:1px solid var(--divider-color,#ddd);border-radius:24px;background:var(--card-background-color,#fff);overflow:hidden;min-height:calc(100vh - 64px)}.workspace-back{display:block;margin:0 0 16px;padding:8px 11px}.workspace-page .workspace-panel{max-height:none;overflow:visible}.workspace-page .settings-card{max-width:760px}.visual-page-list{grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}.visual-page-card{display:flex;flex-direction:column;align-items:stretch;gap:0;padding:14px}.page-card-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}.page-heading{display:flex;flex-direction:column;min-width:0}.page-heading>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.page-heading small{margin:2px 0}.visual-page-card>label{margin-top:12px}.visual-page-card .page-actions{margin-top:auto;padding-top:12px}.visual-page-card .page-actions .primary{flex:1}.page-editor{width:min(1220px,96vw);padding:24px}.page-editor-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(360px,.75fr);gap:24px;align-items:start}.page-editor .component-editor{margin:0}.preview-column{position:sticky;top:0;display:grid;gap:10px}.panel-preview-host{display:grid;place-items:center;border-radius:20px;background:#111218;padding:22px}.panel-preview{position:relative;aspect-ratio:1/1;width:min(100%,480px);overflow:hidden;border-radius:4px;padding:7% 7% 6%;font-family:system-ui,sans-serif;container-type:inline-size}.panel-preview.light{background:#efefec;color:#171916}.panel-preview.dark{background:#121716;color:#f2f3ef}.preview-page-title{font-size:7cqw;font-weight:850;line-height:1.05;margin-bottom:5%}.preview-widgets{height:75%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:1fr;gap:3%;min-height:0}.preview-widgets.fullscreen{display:block}.preview-tile{position:relative;border-radius:14%;padding:10%;display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden}.light .preview-tile{background:#fff}.dark .preview-tile{background:#232826}.preview-tile small{margin:0;color:inherit;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.preview-tile strong{font-size:7cqw;text-transform:capitalize}.preview-tile.control i{font-style:normal;font-size:6cqw;line-height:1}.preview-tile.control em{position:absolute;right:31%;top:10%;font-style:normal;font-size:3cqw;padding:2% 4%;border-radius:999px;background:rgba(127,127,127,.16)}.preview-tile.control span{position:absolute;right:9%;top:10%;width:20%;aspect-ratio:1;border-radius:50%;background:#f36d21}.preview-tile.control.whole-card{outline:2px solid color-mix(in srgb,#f36d21 65%,transparent)}.preview-climate,.preview-weather{height:100%;min-height:0;border-radius:8%;padding:6% 8%;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:space-evenly}.light .preview-climate,.light .preview-weather{background:#f7f7f5}.dark .preview-climate,.dark .preview-weather{background:#232826}.preview-climate small,.preview-climate span{letter-spacing:.12em;margin:0;font-size:4.2cqw;line-height:1}.preview-climate strong{font-size:20cqw;line-height:.9}.preview-climate b{font-size:13cqw;line-height:.9}.preview-modes{margin:0;padding:3% 6%;max-width:96%;border-radius:999px;background:#f36d21;color:#fff;font-size:3.8cqw;line-height:1.2;white-space:nowrap}.preview-weather>span{font-size:13cqw;line-height:1}.preview-weather>strong{font-size:20cqw;line-height:.9}.preview-weather>b{text-transform:capitalize;font-size:5cqw;line-height:1.1}.preview-weather>div{display:flex;gap:4%;align-items:flex-start;justify-content:center;width:96%;margin:0}.preview-weather small{display:flex;flex:1;min-width:0;flex-direction:column;align-items:center;margin:0;font-size:3.4cqw;line-height:1.2;white-space:nowrap}.preview-weather small b{font-size:1.2em}.preview-empty{grid-column:1/-1;display:grid;place-items:center;border:2px dashed currentColor;border-radius:12%;opacity:.35}.preview-dots{position:absolute;left:0;right:0;bottom:2.5%;text-align:center;letter-spacing:.3em;opacity:.5;font-size:2.4cqw}.panel-preview.miniature{width:100%;border-radius:12px;padding:7%}.panel-preview.miniature .preview-page-title{font-size:7cqw}.panel-preview.miniature .preview-widgets{height:72%}.panel-preview.miniature .preview-tile strong{font-size:7cqw}.panel-preview.miniature .preview-climate strong,.panel-preview.miniature .preview-weather>strong{font-size:20cqw}.panel-preview.miniature .preview-climate b{font-size:13cqw}.panel-preview.miniature .preview-modes{font-size:3.8cqw}.panel-preview.miniature .preview-weather>span{font-size:13cqw}.panel-preview.miniature .preview-weather small{font-size:3.4cqw}.panel-preview.miniature .preview-dots{font-size:2.4cqw}.control-options{align-items:end}.control-checks{padding-bottom:3px}.control-checks label{margin-top:10px}
-  .icon-picker{border:1px solid var(--divider-color,#ddd);border-radius:12px;padding:0;margin-top:13px}.icon-picker summary{border:0;padding:12px 14px}.icon-picker summary b{float:right;color:#f36d21}.icon-search{width:calc(100% - 24px);margin:0 12px 10px}.icon-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;max-height:250px;overflow:auto;padding:0 12px 12px}.icon-grid label{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:68px;margin:0;padding:8px 4px;border:1px solid var(--divider-color,#ddd);border-radius:10px;cursor:pointer;text-align:center}.icon-grid label:hover{border-color:#f36d21}.icon-grid label:has(input:checked){border-color:#f36d21;background:#ffebe0;color:#8a430f}.icon-grid input{position:absolute;opacity:0;pointer-events:none}.icon-grid span{font-size:22px;line-height:1}.icon-grid small{margin:0;color:inherit;font-size:9px}.icon-grid [hidden]{display:none}.inline-checks{display:flex;gap:22px;flex-wrap:wrap;margin-top:10px}.inline-checks label{margin-top:6px}
+  .icon-picker{border:1px solid var(--divider-color,#ddd);border-radius:12px;padding:0;margin-top:13px}.icon-picker summary{border:0;padding:12px 14px}.icon-picker summary b{float:right;color:#f36d21}.icon-search{width:calc(100% - 24px);margin:0 12px 10px}.icon-categories{display:flex;gap:6px;overflow-x:auto;padding:0 12px 10px}.icon-categories button{padding:6px 9px;border-radius:999px;font-size:10px;white-space:nowrap}.icon-categories button.active{background:#f36d21;border-color:#f36d21;color:#fff}.icon-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;max-height:300px;overflow:auto;padding:0 12px 12px}.icon-grid label{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:68px;margin:0;padding:8px 4px;border:1px solid var(--divider-color,#ddd);border-radius:10px;cursor:pointer;text-align:center}.icon-grid label:hover{border-color:#f36d21}.icon-grid label:has(input:checked){border-color:#f36d21;background:#ffebe0;color:#8a430f}.icon-grid input{position:absolute;opacity:0;pointer-events:none}.icon-grid span{font-size:22px;line-height:1}.icon-grid small{margin:0;color:inherit;font-size:9px}.icon-grid [hidden]{display:none}.inline-checks{display:flex;gap:22px;flex-wrap:wrap;margin-top:10px}.inline-checks label{margin-top:6px}.entity-picker{position:relative;margin-top:6px}.entity-picker .entity-search{margin:0}.entity-results{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 5px);max-height:280px;overflow:auto;padding:6px;border:1px solid var(--divider-color,#ddd);border-radius:12px;background:var(--card-background-color,#fff);box-shadow:0 12px 35px #0004}.entity-results button{display:block;width:100%;border:0;border-radius:8px;padding:9px 10px;text-align:left;background:transparent}.entity-results button:hover{background:color-mix(in srgb,#f36d21 12%,transparent)}.entity-results b,.entity-results small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entity-results small{margin:2px 0 0;font-family:monospace}.entity-results [hidden]{display:none}
   :host([narrow]) main{padding:18px}:host([narrow]) .cards{grid-template-columns:1fr}@media(max-width:820px){main{padding:18px}.editor-grid{grid-template-columns:1fr}.entity-list{grid-template-columns:1fr}.cards{grid-template-columns:1fr}.section-title{align-items:flex-start}.panel-card{min-height:175px}.panel-card>.actions{justify-content:stretch}.panel-card>.actions button{width:100%}.panel-head{grid-template-columns:42px minmax(0,1fr) auto}.device-icon{width:42px;height:42px}.editor-head{grid-template-columns:1fr auto}.editor-head .status{grid-column:1}.pairing{grid-template-columns:1fr auto}.pairing .expires{grid-column:1}.pairing button{grid-column:2;grid-row:2}.workspace .editor-head{padding:20px}.workspace-tabs{padding:0 12px}.workspace-panel{padding:20px}.workspace-tabs button{padding:12px 11px}.visual-page-list{grid-template-columns:1fr}.page-meta{align-items:flex-start;flex-direction:column;gap:6px}.add-page,.add-widget{grid-template-columns:1fr}.add-page button,.add-widget button{width:100%}.page-editor-grid{grid-template-columns:1fr}.preview-column{position:static}.widget-fields{grid-template-columns:1fr}.icon-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 `;
 
