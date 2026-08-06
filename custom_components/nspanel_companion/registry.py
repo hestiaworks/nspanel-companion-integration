@@ -259,6 +259,22 @@ class PanelRegistry:
         await self._save()
         return self._public(record), token
 
+    async def async_rename(self, panel_id: str, name: str) -> dict[str, Any]:
+        """Update the human-readable panel name without changing its identity."""
+        clean_name = " ".join(name.split())
+        if not clean_name:
+            raise ValueError("Panel name cannot be empty")
+        if len(clean_name) > 64:
+            raise ValueError("Panel name must be 64 characters or fewer")
+        record = self._require(panel_id)
+        record["name"] = clean_name
+        device_registry = dr.async_get(self._hass)
+        device = device_registry.async_get_device(identifiers={(DOMAIN, panel_id)})
+        if device:
+            device_registry.async_update_device(device.id, name_by_user=clean_name)
+        await self._save()
+        return self._public(record)
+
     async def async_revoke(self, panel_id: str) -> dict[str, Any]:
         record = self._panels.pop(panel_id, None)
         if record is None:

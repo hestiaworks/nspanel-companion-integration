@@ -45,6 +45,30 @@ PanelRegistry = sys.modules["nspanel_companion.registry"].PanelRegistry
 
 
 class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):
+    async def test_rename_updates_record_and_device_registry(self):
+        registry = PanelRegistry.__new__(PanelRegistry)
+        registry._hass = object()
+        registry._panels = {"panel-abcd": {
+            "panel_id": "panel-abcd", "device_id": "panel-abcd", "name": "Old name",
+        }}
+        registry._save = AsyncMock()
+        device = Mock(id="device-1")
+        fake_device_registry = Mock()
+        fake_device_registry.async_get_device.return_value = device
+        device_registry.async_get = Mock(return_value=fake_device_registry)
+
+        public = await registry.async_rename("panel-abcd", "  Living   room  ")
+
+        self.assertEqual("Living room", public["name"])
+        fake_device_registry.async_update_device.assert_called_once_with("device-1", name_by_user="Living room")
+        registry._save.assert_awaited_once()
+
+    async def test_rename_rejects_empty_name(self):
+        registry = PanelRegistry.__new__(PanelRegistry)
+        registry._panels = {"panel-abcd": {"panel_id": "panel-abcd", "name": "Panel"}}
+        with self.assertRaisesRegex(ValueError, "cannot be empty"):
+            await registry.async_rename("panel-abcd", "   ")
+
     def test_heartbeat_sanitizes_and_hides_diagnostics_from_panel_list(self):
         registry = PanelRegistry.__new__(PanelRegistry)
         token = "valid-token"
