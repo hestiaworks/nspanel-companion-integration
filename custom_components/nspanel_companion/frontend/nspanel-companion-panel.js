@@ -64,6 +64,12 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.editor = null;
     this.workspaceTab = "general";
     this.routeHandler = () => this.restoreWorkspaceRoute();
+    this.outsidePickerHandler = (event) => {
+      const activePicker = event.composedPath().find((node) => node?.classList?.contains("entity-picker"));
+      this.shadowRoot.querySelectorAll(".entity-results:not([hidden])").forEach((results) => {
+        if (!activePicker || results.closest(".entity-picker") !== activePicker) results.hidden = true;
+      });
+    };
   }
 
   set hass(value) {
@@ -77,6 +83,7 @@ class NSPanelCompanionPanel extends HTMLElement {
   connectedCallback() {
     window.addEventListener("hashchange", this.routeHandler);
     window.addEventListener("popstate", this.routeHandler);
+    document.addEventListener("pointerdown", this.outsidePickerHandler, true);
     this.render();
     if (this._hass && !this.loaded) this.loadPanels();
     this.refreshTimer = setInterval(() => {
@@ -88,6 +95,7 @@ class NSPanelCompanionPanel extends HTMLElement {
   disconnectedCallback() {
     window.removeEventListener("hashchange", this.routeHandler);
     window.removeEventListener("popstate", this.routeHandler);
+    document.removeEventListener("pointerdown", this.outsidePickerHandler, true);
     clearInterval(this.refreshTimer); clearInterval(this.finderTimer);
   }
 
@@ -753,12 +761,6 @@ class NSPanelCompanionPanel extends HTMLElement {
       }));
       input.addEventListener("keydown", (event) => { if (event.key === "Escape" && results) results.hidden = true; });
     });
-    this.shadowRoot.onpointerdown = (event) => {
-      const activePicker = event.target.closest?.(".entity-picker");
-      this.shadowRoot.querySelectorAll(".entity-results:not([hidden])").forEach((results) => {
-        if (!activePicker || results.closest(".entity-picker") !== activePicker) results.hidden = true;
-      });
-    };
     this.shadowRoot.querySelectorAll("[data-widget-drag]").forEach((handle) => {
       handle.addEventListener("dragstart", (event) => {
         event.stopPropagation();
