@@ -153,6 +153,67 @@ async def ws_unpair_scrypted(hass, connection, msg) -> None:
 
 @websocket_api.require_admin
 @websocket_api.async_response
+@websocket_api.websocket_command({vol.Required("type"): "nspanel_companion/updater/status"})
+async def ws_updater_status(hass, connection, msg) -> None:
+    connection.send_result(msg["id"], {"paired": _registry(hass).updater_public()})
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({
+    vol.Required("type"): "nspanel_companion/updater/pair",
+    vol.Required("base_url"): str,
+    vol.Required("code"): str,
+})
+async def ws_pair_updater(hass, connection, msg) -> None:
+    try:
+        connection.send_result(msg["id"], await _registry(hass).async_pair_updater(msg["base_url"], msg["code"]))
+    except ValueError as err:
+        connection.send_error(msg["id"], "updater_pairing_failed", str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({vol.Required("type"): "nspanel_companion/updater/unpair"})
+async def ws_unpair_updater(hass, connection, msg) -> None:
+    try:
+        await _registry(hass).async_unpair_updater()
+        connection.send_result(msg["id"], {"unpaired": True})
+    except ValueError as err:
+        connection.send_error(msg["id"], "updater_unpair_failed", str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({
+    vol.Required("type"): "nspanel_companion/updater/discover",
+    vol.Required("subnet"): str,
+})
+async def ws_updater_discover(hass, connection, msg) -> None:
+    try:
+        connection.send_result(msg["id"], await _registry(hass).async_updater_request("/api/discover", {"subnet": msg["subnet"]}))
+    except ValueError as err:
+        connection.send_error(msg["id"], "updater_discovery_failed", str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({
+    vol.Required("type"): "nspanel_companion/updater/update",
+    vol.Required("address"): str,
+    vol.Required("classification"): vol.In(["nspanel-companion", "probable-nspanel"]),
+})
+async def ws_updater_update(hass, connection, msg) -> None:
+    try:
+        connection.send_result(msg["id"], await _registry(hass).async_updater_request("/api/update", {
+            "address": msg["address"], "classification": msg["classification"],
+        }))
+    except ValueError as err:
+        connection.send_error(msg["id"], "updater_update_failed", str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
 @websocket_api.websocket_command({
     vol.Required("type"): "nspanel_companion/scrypted/doorbells",
     vol.Required("bridge_id"): str,
@@ -383,3 +444,8 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_scan_panels)
     websocket_api.async_register_command(hass, ws_set_panel_discovery)
     websocket_api.async_register_command(hass, ws_connect_discovered_panel)
+    websocket_api.async_register_command(hass, ws_updater_status)
+    websocket_api.async_register_command(hass, ws_pair_updater)
+    websocket_api.async_register_command(hass, ws_unpair_updater)
+    websocket_api.async_register_command(hass, ws_updater_discover)
+    websocket_api.async_register_command(hass, ws_updater_update)

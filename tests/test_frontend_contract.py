@@ -58,7 +58,7 @@ class FrontendContractTest(unittest.TestCase):
 
     def test_admin_websocket_commands_use_current_ha_decorator(self):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
-        self.assertEqual(19, source.count("@websocket_api.require_admin"))
+        self.assertEqual(24, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
 
     def test_panel_sync_includes_human_readable_name(self):
