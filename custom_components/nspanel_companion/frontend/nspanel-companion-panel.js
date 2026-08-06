@@ -5,6 +5,9 @@ const DEFAULT_LAYOUT = (revision) => ({
   default_page_return_seconds: 60,
   weather_cache_max_age_minutes: 360,
   keep_screen_on: false,
+  show_clock: true,
+  show_mic_indicator: true,
+  mic_indicator_linger_seconds: 15,
   pages: [
     { id: "climate", title: "Thermostat", widgets: [{ type: "thermostat" }] },
     { id: "weather", title: "Weather", widgets: [{ type: "weather" }] },
@@ -315,6 +318,13 @@ class NSPanelCompanionPanel extends HTMLElement {
     const values = new FormData(form);
     const name = String(values.get("panel_name") || "").trim();
     const themeMode = String(values.get("theme_mode") || "light");
+    const generalSettings = {
+      default_page_return_seconds: Number(values.get("return_seconds") ?? 60),
+      keep_screen_on: values.get("keep_screen_on") === "on",
+      show_clock: values.get("show_clock") === "on",
+      show_mic_indicator: values.get("show_mic_indicator") === "on",
+      mic_indicator_linger_seconds: Number(values.get("mic_indicator_linger_seconds") ?? 15),
+    };
     if (!name || !this.editor) return;
     this.busy = true; this.error = "";
     try {
@@ -326,15 +336,18 @@ class NSPanelCompanionPanel extends HTMLElement {
       this.editor.panel = panel;
       this.panels = this.panels.map((item) => item.panel_id === panel.panel_id ? panel : item);
       this.editor.draftThemeMode = themeMode;
-      if (this.editor.hasPublishedLayout && themeMode !== (this.editor.layout.theme_mode || "light")) {
+      if (this.editor.hasPublishedLayout) {
         const themeLayout = {
           ...structuredClone(this.editor.layout),
-          revision: `theme-${Date.now()}`,
+          ...generalSettings,
+          revision: `general-${Date.now()}`,
           theme_mode: themeMode,
           theme_dark: themeMode === "dark" || themeMode === "inherit" && Boolean(this._hass?.themes?.darkMode),
         };
         await this.call({ type: "nspanel_companion/layout/set", panel_id: panel.panel_id, layout: themeLayout });
         this.editor.layout = themeLayout;
+      } else {
+        this.editor.layout = { ...this.editor.layout, ...generalSettings, theme_mode: themeMode };
       }
       this.render();
     } catch (error) {
@@ -445,6 +458,11 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.syncPageDraftFromDom();
     const page = this.editor?.draftPages.find((item) => item.id === pageId);
     if (!page || !type || page.widgets.length >= 12) return;
+    if (type === "entity_button" && page.widgets.length >= 4) {
+      this.error = "A controls page supports at most four controls.";
+      this.render();
+      return;
+    }
     const isFullScreen = ["thermostat", "weather", "camera"].includes(type);
     if ((isFullScreen && page.widgets.length) || (!isFullScreen && page.widgets.some((item) => ["thermostat", "weather", "camera"].includes(item.type)))) {
       this.error = "Thermostat, weather, and camera use the full panel screen. Put each on its own page.";
@@ -502,6 +520,12 @@ class NSPanelCompanionPanel extends HTMLElement {
       this.selectWorkspaceTab("pages", false);
       return;
     }
+    if (pages.some((page) => page.widgets.some((widget) => ["controls", "entity_button"].includes(widget.type)) && page.widgets.length > 4)) {
+      this.error = "A controls page supports at most four controls.";
+      this.render();
+      this.selectWorkspaceTab("pages", false);
+      return;
+    }
     if (pages.some((page) => page.widgets.some((widget) => ["entity_button", "sensor", "thermostat", "weather"].includes(widget.type) && !widget.entity_id))) {
       this.error = "Select a Home Assistant entity for every component before publishing.";
       this.render();
@@ -519,9 +543,12 @@ class NSPanelCompanionPanel extends HTMLElement {
       schema_version: 1,
       revision: `ui-${Date.now()}`,
       default_page_id: defaultPageId,
-      default_page_return_seconds: Number(values.get("return_seconds") || 60),
+      default_page_return_seconds: Number(this.editor.layout.default_page_return_seconds ?? 60),
       weather_cache_max_age_minutes: 360,
-      keep_screen_on: values.get("keep_screen_on") === "on",
+      keep_screen_on: Boolean(this.editor.layout.keep_screen_on),
+      show_clock: this.editor.layout.show_clock !== false,
+      show_mic_indicator: this.editor.layout.show_mic_indicator !== false,
+      mic_indicator_linger_seconds: Number(this.editor.layout.mic_indicator_linger_seconds ?? 15),
       theme_mode: this.editor.draftThemeMode,
       theme_dark: this.editor.draftThemeMode === "dark" || this.editor.draftThemeMode === "inherit" && Boolean(this._hass?.themes?.darkMode),
       pages,
@@ -937,7 +964,9 @@ class NSPanelCompanionPanel extends HTMLElement {
   pageComponentEditor(page) {
     if (!page) return "";
     const hasFullScreen = page.widgets.some((widget) => ["thermostat", "weather", "camera"].includes(widget.type));
-    return `<div class="scrim page-editor-scrim"><section class="dialog page-editor"><div class="component-head"><div><span class="eyebrow">Edit page</span><h2>${escapeHtml(page.title || "Untitled page")}</h2><p>Configure the native components and see an approximate panel preview.</p></div><button type="button" data-close-page-components>Done</button></div><div class="page-editor-grid"><section class="component-editor">${page.widgets.length ? `<div class="widget-list">${page.widgets.map((widget, index) => this.widgetEditor(page, widget, index)).join("")}</div>` : `<div class="empty compact"><b>This page is empty</b><span>Add its first native component below.</span></div>`}<div class="add-widget"><label>Component type<select id="new-widget-type" ${hasFullScreen || page.widgets.length >= 12 ? "disabled" : ""}><option value="entity_button">Home control</option><option value="sensor">Sensor</option><option value="thermostat">Thermostat</option><option value="weather">Weather</option><option value="camera">Camera</option></select></label><button id="add-widget" data-widget-page="${escapeHtml(page.id)}" class="primary" type="button" ${hasFullScreen || page.widgets.length >= 12 ? "disabled" : ""}>Add component</button></div>${hasFullScreen ? `<small>This full-screen component must remain the only component on this page.</small>` : ""}</section><aside class="preview-column"><span class="eyebrow">Panel preview</span><div class="panel-preview-host">${this.pagePreview(page, true)}</div><small>Approximate preview at the NSPanel Pro aspect ratio. The Android app remains the rendering authority.</small></aside></div></section></div>`;
+    const controlLimitReached = page.widgets.some((widget) => ["controls", "entity_button"].includes(widget.type)) && page.widgets.length >= 4;
+    const addDisabled = hasFullScreen || page.widgets.length >= 12 || controlLimitReached;
+    return `<div class="scrim page-editor-scrim"><section class="dialog page-editor"><div class="component-head"><div><span class="eyebrow">Edit page</span><h2>${escapeHtml(page.title || "Untitled page")}</h2><p>Configure the native components and see an approximate panel preview.</p></div><button type="button" data-close-page-components>Done</button></div><div class="page-editor-grid"><section class="component-editor">${page.widgets.length ? `<div class="widget-list">${page.widgets.map((widget, index) => this.widgetEditor(page, widget, index)).join("")}</div>` : `<div class="empty compact"><b>This page is empty</b><span>Add its first native component below.</span></div>`}<div class="add-widget"><label>Component type<select id="new-widget-type" ${addDisabled ? "disabled" : ""}><option value="entity_button">Home control</option><option value="sensor">Sensor</option><option value="thermostat">Thermostat</option><option value="weather">Weather</option><option value="camera">Camera</option></select></label><button id="add-widget" data-widget-page="${escapeHtml(page.id)}" class="primary" type="button" ${addDisabled ? "disabled" : ""}>Add component</button></div>${hasFullScreen ? `<small>This full-screen component must remain the only component on this page.</small>` : controlLimitReached ? `<small>Controls pages support at most four controls for reliable touch targets.</small>` : ""}</section><aside class="preview-column"><span class="eyebrow">Panel preview</span><div class="panel-preview-host">${this.pagePreview(page, true)}</div><small>Approximate preview at the NSPanel Pro aspect ratio. The Android app remains the rendering authority.</small></aside></div></section></div>`;
   }
 
   previewEntity(widget) {
@@ -1043,6 +1072,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         <form id="panel-general" class="settings-card">
           <label>Panel name<input name="panel_name" maxlength="64" required value="${escapeHtml(panel.name)}" placeholder="Living room"></label>
           <label>Panel theme<select name="theme_mode"><option value="inherit" ${this.editor.draftThemeMode === "inherit" ? "selected" : ""}>Auto · inherit Home Assistant</option><option value="light" ${this.editor.draftThemeMode === "light" ? "selected" : ""}>Light</option><option value="dark" ${this.editor.draftThemeMode === "dark" ? "selected" : ""}>Dark</option></select><small>Auto resolves the active Home Assistant light/dark appearance when the dashboard is published. Explicit Light or Dark stays fixed.</small></label>
+          <fieldset class="dashboard-behavior"><legend>Dashboard behavior</legend><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>When disabled, the panel follows its Android display timeout.</small><label class="check"><input name="show_clock" type="checkbox" ${layout.show_clock !== false ? "checked" : ""}> Show Home Assistant time</label><label class="check"><input name="show_mic_indicator" type="checkbox" ${layout.show_mic_indicator !== false ? "checked" : ""}> Show microphone privacy indicator</label><label>Keep microphone indicator green after use<input name="mic_indicator_linger_seconds" type="number" min="0" max="60" value="${Number(layout.mic_indicator_linger_seconds ?? 15)}"><small>Seconds; use 0 to show green only during active capture.</small></label></fieldset>
           <label>Stable device ID<input value="${escapeHtml(panel.device_id)}" readonly></label>
           <dl><div><dt>Connection</dt><dd>${panel.revoked ? "Revoked" : online ? "Online" : "Offline"}</dd></div><div><dt>Registered</dt><dd>${formatDate(panel.created_at)}</dd></div><div><dt>App version</dt><dd>${escapeHtml(panel.app_version || "—")}</dd></div></dl>
           <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save general settings</button></div>
@@ -1058,7 +1088,6 @@ class NSPanelCompanionPanel extends HTMLElement {
           ${this.pageComponentEditor(this.editor.draftPages.find((page) => page.id === this.editor.activePageId))}
           <div class="add-page"><label>New page name<input id="new-page-title" maxlength="48" placeholder="For example: Climate or Lights" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}></label><button id="add-page" type="button" class="primary" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Add page</button></div>
           ${this.editor.draftPages.some((page) => !(page.widgets || []).length) ? `<div class="notice draft-note">Pages without components remain drafts and cannot be published yet.</div>` : ""}
-          <fieldset class="dashboard-behavior"><legend>Dashboard behavior</legend><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>Off by default. When disabled, the panel follows its Android display timeout and automatic brightness settings.</small></fieldset>
           <div class="actions"><button data-close-editor type="button">Cancel</button><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Publish to panel</button></div>
         </section>
         <section class="workspace-panel" data-workspace-panel="doorbell" ${tab === "doorbell" ? "" : "hidden"}>

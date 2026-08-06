@@ -46,6 +46,8 @@ def validate_layout(value: Any) -> dict[str, Any]:
         widgets = page.get("widgets", [])
         if not isinstance(widgets, list) or len(widgets) > 12:
             raise ValueError("A page may contain at most 12 widgets")
+        if any(isinstance(widget, dict) and widget.get("type") in {"controls", "entity_button"} for widget in widgets) and len(widgets) > 4:
+            raise ValueError("A controls page supports at most four controls")
         for widget in widgets:
             if not isinstance(widget, dict) or widget.get("type") not in SUPPORTED_WIDGETS:
                 raise ValueError("Unsupported widget")
@@ -141,6 +143,12 @@ def validate_layout(value: Any) -> dict[str, Any]:
     normalized["default_page_return_seconds"] = return_seconds
     normalized["weather_cache_max_age_minutes"] = cache_minutes
     normalized["keep_screen_on"] = bool(value.get("keep_screen_on", False))
+    normalized["show_clock"] = bool(value.get("show_clock", True))
+    normalized["show_mic_indicator"] = bool(value.get("show_mic_indicator", True))
+    mic_linger_seconds = int(value.get("mic_indicator_linger_seconds", 15))
+    if not 0 <= mic_linger_seconds <= 60:
+        raise ValueError("Microphone indicator duration must be 0–60 seconds")
+    normalized["mic_indicator_linger_seconds"] = mic_linger_seconds
     theme_mode = str(value.get("theme_mode", "light"))
     if theme_mode not in {"light", "dark", "inherit"}:
         raise ValueError("Invalid panel theme")

@@ -12,6 +12,31 @@ SPEC.loader.exec_module(layout_module)
 
 
 class LayoutValidationTest(unittest.TestCase):
+    def test_limits_controls_and_normalizes_status_settings(self):
+        widgets = [
+            {"type": "entity_button", "entity_id": f"switch.room_{index}"}
+            for index in range(4)
+        ]
+        value = layout_module.validate_layout({
+            "schema_version": 1,
+            "revision": "status",
+            "pages": [{"id": "main", "widgets": widgets}],
+            "show_clock": False,
+            "show_mic_indicator": True,
+            "mic_indicator_linger_seconds": 20,
+        })
+        self.assertFalse(value["show_clock"])
+        self.assertTrue(value["show_mic_indicator"])
+        self.assertEqual(20, value["mic_indicator_linger_seconds"])
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout({
+                "schema_version": 1,
+                "revision": "too-many-controls",
+                "pages": [{"id": "main", "widgets": widgets + [
+                    {"type": "entity_button", "entity_id": "switch.room_5"},
+                ]}],
+            })
+
     def test_normalizes_defaults(self):
         value = layout_module.validate_layout({
             "schema_version": 1,
