@@ -90,4 +90,9 @@ def validate_layout(value: Any) -> dict[str, Any]:
     normalized["default_page_return_seconds"] = return_seconds
     normalized["weather_cache_max_age_minutes"] = cache_minutes
     normalized["keep_screen_on"] = bool(value.get("keep_screen_on", False))
+    theme_mode = str(value.get("theme_mode", "light"))
+    if theme_mode not in {"light", "dark", "inherit"}:
+        raise ValueError("Invalid panel theme")
+    normalized["theme_mode"] = theme_mode
+    normalized["theme_dark"] = bool(value.get("theme_dark", False))
     return normalized

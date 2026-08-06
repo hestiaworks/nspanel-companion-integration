@@ -258,7 +258,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         layout: layout || fallback,
         hasPublishedLayout: Boolean(layout),
         draftPages: structuredClone(layout?.pages || []),
-        draftDefaultPageId: layout?.default_page_id || "",
+        draftThemeMode: layout ? (layout.theme_mode || "light") : "inherit",
       };
       if (updateRoute) history.pushState(null, "", this.workspaceRoute(panelId, tab));
     } catch (error) { this.error = error?.message || "Unable to open editor"; }
@@ -266,7 +266,9 @@ class NSPanelCompanionPanel extends HTMLElement {
   }
 
   async renamePanel(form) {
-    const name = String(new FormData(form).get("panel_name") || "").trim();
+    const values = new FormData(form);
+    const name = String(values.get("panel_name") || "").trim();
+    const themeMode = String(values.get("theme_mode") || "light");
     if (!name || !this.editor) return;
     this.busy = true; this.error = "";
     try {
@@ -277,6 +279,17 @@ class NSPanelCompanionPanel extends HTMLElement {
       });
       this.editor.panel = panel;
       this.panels = this.panels.map((item) => item.panel_id === panel.panel_id ? panel : item);
+      this.editor.draftThemeMode = themeMode;
+      if (this.editor.hasPublishedLayout && themeMode !== (this.editor.layout.theme_mode || "light")) {
+        const themeLayout = {
+          ...structuredClone(this.editor.layout),
+          revision: `theme-${Date.now()}`,
+          theme_mode: themeMode,
+          theme_dark: themeMode === "dark" || themeMode === "inherit" && Boolean(this._hass?.themes?.darkMode),
+        };
+        await this.call({ type: "nspanel_companion/layout/set", panel_id: panel.panel_id, layout: themeLayout });
+        this.editor.layout = themeLayout;
+      }
       this.render();
     } catch (error) {
       this.error = error?.message || "Unable to rename panel";
@@ -312,7 +325,6 @@ class NSPanelCompanionPanel extends HTMLElement {
     if (!title) { input?.focus(); return; }
     const page = { id: this.pageIdFor(title), title: title.slice(0, 48), widgets: [] };
     this.editor.draftPages.push(page);
-    if (!this.editor.draftDefaultPageId) this.editor.draftDefaultPageId = page.id;
     this.error = "";
     this.render();
   }
@@ -332,8 +344,16 @@ class NSPanelCompanionPanel extends HTMLElement {
     }
     if (action === "delete") {
       pages.splice(index, 1);
-      if (this.editor.draftDefaultPageId === current.id) this.editor.draftDefaultPageId = pages[0]?.id || "";
     }
+    this.render();
+  }
+
+  moveDraftPage(from, to) {
+    if (!this.editor || from === to || from < 0 || to < 0) return;
+    this.syncPageDraftFromDom();
+    const pages = this.editor.draftPages;
+    const [page] = pages.splice(from, 1);
+    pages.splice(to, 0, page);
     this.render();
   }
 
@@ -356,8 +376,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       this.selectWorkspaceTab("pages", false);
       return;
     }
-    const requestedDefault = this.editor.draftDefaultPageId;
-    const defaultPageId = pages.some((page) => page.id === requestedDefault) ? requestedDefault : pages[0].id;
+    const defaultPageId = pages[0].id;
     const layout = {
       schema_version: 1,
       revision: `ui-${Date.now()}`,
@@ -365,6 +384,8 @@ class NSPanelCompanionPanel extends HTMLElement {
       default_page_return_seconds: Number(values.get("return_seconds") || 60),
       weather_cache_max_age_minutes: 360,
       keep_screen_on: values.get("keep_screen_on") === "on",
+      theme_mode: this.editor.draftThemeMode,
+      theme_dark: this.editor.draftThemeMode === "dark" || this.editor.draftThemeMode === "inherit" && Boolean(this._hass?.themes?.darkMode),
       pages,
       doorbell: {
         enabled: values.get("doorbell_enabled") === "on",
@@ -533,8 +554,28 @@ class NSPanelCompanionPanel extends HTMLElement {
     });
     this.shadowRoot.querySelectorAll("[data-page-action]").forEach((button) =>
       button.addEventListener("click", () => this.updateDraftPage(Number(button.dataset.pageIndex), button.dataset.pageAction)));
-    this.shadowRoot.querySelectorAll('[name="default_page"]').forEach((input) =>
-      input.addEventListener("change", () => { this.editor.draftDefaultPageId = input.value; }));
+    this.shadowRoot.querySelectorAll("[data-page-drag]").forEach((handle) => {
+      handle.addEventListener("dragstart", (event) => {
+        this.draggedPageIndex = Number(handle.dataset.pageDrag);
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", String(this.draggedPageIndex));
+        handle.closest(".page-card")?.classList.add("dragging");
+      });
+      handle.addEventListener("dragend", () => {
+        this.draggedPageIndex = null;
+        this.shadowRoot.querySelectorAll(".page-card").forEach((card) => card.classList.remove("dragging", "drag-over"));
+      });
+    });
+    this.shadowRoot.querySelectorAll("[data-page-drop]").forEach((card) => {
+      card.addEventListener("dragover", (event) => { event.preventDefault(); card.classList.add("drag-over"); });
+      card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
+      card.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const from = Number(event.dataTransfer.getData("text/plain"));
+        const to = Number(card.dataset.pageDrop);
+        this.moveDraftPage(from, to);
+      });
+    });
     this.shadowRoot.querySelectorAll("[data-edit]").forEach((button) =>
       button.addEventListener("click", () => this.editPanel(button.dataset.edit, "general")));
     this.shadowRoot.querySelectorAll("[data-test-doorbell]").forEach((button) =>
@@ -633,9 +674,10 @@ class NSPanelCompanionPanel extends HTMLElement {
         <div class="workspace-intro"><h3>Panel identity</h3><p>Give this panel a name that describes its room or purpose. Its stable device ID never changes.</p></div>
         <form id="panel-general" class="settings-card">
           <label>Panel name<input name="panel_name" maxlength="64" required value="${escapeHtml(panel.name)}" placeholder="Living room"></label>
+          <label>Panel theme<select name="theme_mode"><option value="inherit" ${this.editor.draftThemeMode === "inherit" ? "selected" : ""}>Auto · inherit Home Assistant</option><option value="light" ${this.editor.draftThemeMode === "light" ? "selected" : ""}>Light</option><option value="dark" ${this.editor.draftThemeMode === "dark" ? "selected" : ""}>Dark</option></select><small>Auto resolves the active Home Assistant light/dark appearance when the dashboard is published. Explicit Light or Dark stays fixed.</small></label>
           <label>Stable device ID<input value="${escapeHtml(panel.device_id)}" readonly></label>
           <dl><div><dt>Connection</dt><dd>${panel.revoked ? "Revoked" : online ? "Online" : "Offline"}</dd></div><div><dt>Registered</dt><dd>${formatDate(panel.created_at)}</dd></div><div><dt>App version</dt><dd>${escapeHtml(panel.app_version || "—")}</dd></div></dl>
-          <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save name</button></div>
+          <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save general settings</button></div>
         </form>
       </section>
       <form id="layout-editor" class="workspace-layout-form">
@@ -643,7 +685,7 @@ class NSPanelCompanionPanel extends HTMLElement {
           <div class="workspace-intro"><h3>Pages</h3><p>Create and arrange the screens people reach by swiping on this panel. Changes stay in this workspace until you publish.</p></div>
           ${this.editor.draftPages.length ? `<div class="page-list">${this.editor.draftPages.map((page, index) => {
             const components = (page.widgets || []).map((widget) => widget.type.replace("entity_button", "control"));
-            return `<article class="page-card"><div class="page-order">${index + 1}</div><div class="page-content"><label>Page name<input data-page-title="${index}" maxlength="48" required value="${escapeHtml(page.title)}"></label><div class="page-meta"><label class="default-page"><input type="radio" name="default_page" value="${escapeHtml(page.id)}" ${page.id === this.editor.draftDefaultPageId ? "checked" : ""}> First page</label><span>${components.length ? `${components.length} component${components.length === 1 ? "" : "s"}: ${escapeHtml([...new Set(components)].join(", "))}` : "No components yet"}</span></div></div><div class="page-actions"><button type="button" title="Move up" data-page-action="up" data-page-index="${index}" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" title="Move down" data-page-action="down" data-page-index="${index}" ${index === this.editor.draftPages.length - 1 ? "disabled" : ""}>↓</button><button type="button" data-page-action="duplicate" data-page-index="${index}" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Duplicate</button><button class="danger" type="button" data-page-action="delete" data-page-index="${index}">Delete</button></div></article>`;
+            return `<article class="page-card" data-page-drop="${index}"><div class="page-order" data-page-drag="${index}" draggable="true" title="Drag to reorder" aria-label="Drag ${escapeHtml(page.title)} to reorder"><span>⠿</span><small>${index + 1}</small></div><div class="page-content"><label>Page name<input data-page-title="${index}" maxlength="48" required value="${escapeHtml(page.title)}"></label><div class="page-meta"><span>${index === 0 ? "First screen · " : ""}${components.length ? `${components.length} component${components.length === 1 ? "" : "s"}: ${escapeHtml([...new Set(components)].join(", "))}` : "No components yet"}</span></div></div><div class="page-actions"><button type="button" data-page-action="duplicate" data-page-index="${index}" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Duplicate</button><button class="danger" type="button" data-page-action="delete" data-page-index="${index}">Delete</button></div></article>`;
           }).join("")}</div>` : `<div class="unconfigured-notice"><span class="device-icon">＋</span><div><h3>No pages configured</h3><p>This panel is showing its native setup screen. Create its first page below.</p></div></div>`}
           <div class="add-page"><label>New page name<input id="new-page-title" maxlength="48" placeholder="For example: Climate or Lights" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}></label><button id="add-page" type="button" class="primary" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Add page</button></div>
           ${this.editor.draftPages.some((page) => !(page.widgets || []).length) ? `<div class="notice draft-note">Pages without components remain drafts and cannot be published yet. Component editing is the next builder step.</div>` : ""}
@@ -697,7 +739,7 @@ const STYLES = `
   .finder-list{display:grid;gap:10px;margin-top:18px}.finder-panel{display:grid;grid-template-columns:42px 1fr auto;align-items:center;text-align:left;gap:12px;width:100%;padding:13px}.finder-panel span:nth-child(2){min-width:0}.finder-panel b,.finder-panel small{display:block}.finder-panel small,.device-id{font-family:monospace;overflow-wrap:anywhere}.pairing-dialog{width:min(620px,100%);padding:30px}.pairing-dialog-head{display:flex;align-items:center;gap:20px;margin-bottom:28px}.pairing-dialog-head .eyebrow{display:block}.pairing-dialog-body h2{font-size:30px;margin:0 0 10px}.pairing-dialog-body .device-id{margin:0 0 18px}.pairing-help{margin:0 0 28px}.pairing-form{margin:0}.pairing-entry{display:block;width:min(100%,380px);font-size:30px;letter-spacing:.18em;text-align:center;margin:0;padding:18px 20px}.pairing-actions{margin-top:34px;gap:12px}.pairing-actions button{min-width:120px;padding:14px 20px}
   .editor{width:min(980px,100%)}.editor-head{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:start;margin-bottom:18px}.editor-head .device-id{margin-top:5px}.editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}fieldset{border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:16px;margin:0 0 16px}legend{font-size:16px;font-weight:800;padding:0 7px}select{width:100%;margin-top:6px;border:1px solid var(--divider-color,#d8dad6);border-radius:11px;background:var(--secondary-background-color,#f7f7f5);color:inherit;padding:12px;font:inherit}.check{display:flex;gap:9px;align-items:center}.check input,.entity-check input{width:auto;margin:0}.entity-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:280px;overflow:auto}.entity-check{display:flex;align-items:center;gap:10px;margin:0;padding:10px;border:1px solid var(--divider-color,#ddd);border-radius:11px}.entity-check span{min-width:0}.entity-check b,.entity-check small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entity-check small{margin:2px 0 0;font-family:monospace}.panel-tools{background:var(--secondary-background-color,#f7f7f5)}.panel-tools .actions{justify-content:flex-start}
   .workspace{padding:0;overflow:hidden}.workspace .editor-head{grid-template-columns:minmax(0,1fr) auto;padding:24px 26px 18px;margin:0}.workspace-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.workspace-title h2{margin:0}.workspace-tabs{display:flex;gap:4px;padding:0 26px;border-bottom:1px solid var(--divider-color,#ddd);overflow-x:auto}.workspace-tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;color:var(--secondary-text-color,#777);padding:13px 15px;white-space:nowrap}.workspace-tabs button.active{color:var(--primary-text-color,#171916);border-bottom-color:#f36d21}.workspace-panel{padding:24px 26px;max-height:calc(90vh - 165px);overflow:auto}.workspace-panel[hidden]{display:none}.workspace-intro{margin-bottom:18px}.workspace-intro h3{font-size:20px}.workspace-layout-form{margin:0}.settings-card{max-width:680px;border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:18px;margin:0}.settings-card input[readonly]{font-family:monospace;color:var(--secondary-text-color,#777)}.unconfigured-notice{display:flex;align-items:center;gap:14px;border:1px solid #ffc7a8;background:#fff4ed;color:#171916;border-radius:16px;padding:16px;margin-bottom:18px}.unconfigured-notice h3{margin:0 0 4px}.unconfigured-notice p{margin:0}.danger-zone{border-color:#d79a95;background:color-mix(in srgb,var(--card-background-color,#fff) 92%,#b3261e)}.left{justify-content:flex-start}
-  .page-list{display:grid;gap:10px;margin-bottom:18px}.page-card{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:14px;background:var(--card-background-color,#fff)}.page-order{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:#ffebe0;color:#d95713;font-weight:900}.page-content{min-width:0}.page-content label{margin:0}.page-content input{margin-top:5px}.page-meta{display:flex;align-items:center;gap:14px;margin-top:9px;color:var(--secondary-text-color,#777);font-size:12px}.default-page{display:flex;align-items:center;gap:6px;white-space:nowrap}.default-page input{width:auto;margin:0}.page-actions{display:grid;grid-template-columns:auto auto;gap:6px}.page-actions button{padding:8px 10px;font-size:12px}.add-page{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px;border:1px dashed var(--divider-color,#bbb);border-radius:16px;padding:14px;margin-bottom:16px}.add-page label{margin:0}.add-page button{min-height:44px}.draft-note{background:#fff4ed;color:#8a430f}.dashboard-behavior{margin-top:18px}
+  .page-list{display:grid;gap:10px;margin-bottom:18px}.page-card{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:14px;background:var(--card-background-color,#fff);transition:border-color .15s,opacity .15s,transform .15s}.page-card.dragging{opacity:.45}.page-card.drag-over{border-color:#f36d21;transform:translateY(2px)}.page-order{display:flex;flex-direction:column;align-items:center;justify-content:center;width:38px;height:48px;border-radius:12px;background:#ffebe0;color:#d95713;font-weight:900;cursor:grab;user-select:none}.page-order:active{cursor:grabbing}.page-order span{font-size:20px;line-height:16px}.page-order small{margin:3px 0 0;color:inherit;font-size:10px}.page-content{min-width:0}.page-content label{margin:0}.page-content input{margin-top:5px}.page-meta{display:flex;align-items:center;gap:14px;margin-top:9px;color:var(--secondary-text-color,#777);font-size:12px}.page-actions{display:flex;gap:6px}.page-actions button{padding:8px 10px;font-size:12px}.add-page{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px;border:1px dashed var(--divider-color,#bbb);border-radius:16px;padding:14px;margin-bottom:16px}.add-page label{margin:0}.add-page button{min-height:44px}.draft-note{background:#fff4ed;color:#8a430f}.dashboard-behavior{margin-top:18px}
   :host([narrow]) main{padding:18px}:host([narrow]) .cards{grid-template-columns:1fr}@media(max-width:720px){main{padding:18px}.editor-grid{grid-template-columns:1fr}.entity-list{grid-template-columns:1fr}.cards{grid-template-columns:1fr}.section-title{align-items:flex-start}.panel-card{min-height:175px}.panel-card>.actions{justify-content:stretch}.panel-card>.actions button{width:100%}.panel-head{grid-template-columns:42px minmax(0,1fr) auto}.device-icon{width:42px;height:42px}.editor-head{grid-template-columns:1fr auto}.editor-head .status{grid-column:1}.pairing{grid-template-columns:1fr auto}.pairing .expires{grid-column:1}.pairing button{grid-column:2;grid-row:2}.workspace .editor-head{padding:20px}.workspace-tabs{padding:0 12px}.workspace-panel{padding:20px}.workspace-tabs button{padding:12px 11px}.page-card{grid-template-columns:36px minmax(0,1fr)}.page-actions{grid-column:2;display:flex;flex-wrap:wrap}.page-meta{align-items:flex-start;flex-direction:column;gap:6px}.add-page{grid-template-columns:1fr}.add-page button{width:100%}}
 `;
 
