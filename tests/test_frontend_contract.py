@@ -30,6 +30,11 @@ class FrontendContractTest(unittest.TestCase):
             "nspanel_companion/panels/discovery/scan",
             "nspanel_companion/panels/discovery/settings",
             "nspanel_companion/panels/discovery/connect",
+            "nspanel_companion/updater/status",
+            "nspanel_companion/updater/pair",
+            "nspanel_companion/updater/unpair",
+            "nspanel_companion/updater/discover",
+            "nspanel_companion/updater/update",
         ):
             self.assertIn(command, source)
         self.assertIn("escapeHtml", source)
@@ -50,6 +55,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('name="theme_mode"', source)
         self.assertIn('customElements.define("ha-panel-nspanel-companion-panel"', source)
         self.assertIn("customElements.define", source)
+        self.assertIn('["nspanel-companion", "probable-nspanel"].includes(device.classification)', source)
 
     def test_manifest_loads_frontend_dependencies(self):
         manifest = json.loads((ROOT / "custom_components/nspanel_companion/manifest.json").read_text())
