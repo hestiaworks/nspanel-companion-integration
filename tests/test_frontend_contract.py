@@ -66,6 +66,8 @@ class FrontendContractTest(unittest.TestCase):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
         self.assertEqual(24, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
+        self.assertIn('{"nspanel-companion", "probable-nspanel"}', source)
+        self.assertIn('device.get("adb_state") == "device"', source)
 
     def test_panel_sync_includes_human_readable_name(self):
         source = (ROOT / "custom_components/nspanel_companion/http.py").read_text()
