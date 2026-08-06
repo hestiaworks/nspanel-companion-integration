@@ -288,11 +288,38 @@ class PanelRegistry:
 
     async def async_set_layout(self, panel_id: str, layout: dict[str, Any]) -> dict[str, Any]:
         record = self._require(panel_id)
+        layout = await self._hydrate_camera_widgets(layout)
         normalized = validate_layout(layout)
         record["layout"] = normalized
         record["layout_revision"] = normalized["revision"]
         await self._save()
         return self._public(record)
+
+    async def _hydrate_camera_widgets(self, layout: dict[str, Any]) -> dict[str, Any]:
+        hydrated = dict(layout)
+        pages = [dict(page) for page in layout.get("pages", [])]
+        cache: dict[str, list[dict[str, Any]]] = {}
+        for page in pages:
+            widgets = [dict(widget) for widget in page.get("widgets", [])]
+            for widget in widgets:
+                if widget.get("type") != "camera":
+                    continue
+                bridge_id = str(widget.get("scrypted_bridge_id", ""))
+                camera_id = str(widget.get("scrypted_camera_id", ""))
+                if not bridge_id or not camera_id:
+                    raise ValueError("Select a Scrypted camera")
+                if bridge_id not in cache:
+                    cache[bridge_id] = await self.async_scrypted_doorbells(bridge_id)
+                selected = next((item for item in cache[bridge_id] if item.get("id") == camera_id), None)
+                if not selected:
+                    raise ValueError("Unknown Scrypted camera")
+                widget["stream_base_url"] = selected.get("video_url", "")
+                widget["stream_name"] = selected.get("stream_name", "") or "doorbell_sub"
+                widget["talkback_url"] = selected.get("talkback_url", "")
+                widget["talkback_key"] = selected.get("talkback_key", "")
+            page["widgets"] = widgets
+        hydrated["pages"] = pages
+        return hydrated
 
     def layout(self, panel_id: str) -> dict[str, Any] | None:
         return self._require(panel_id).get("layout")

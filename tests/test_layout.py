@@ -138,6 +138,24 @@ class LayoutValidationTest(unittest.TestCase):
             value["doorbell"]["stream_base_url"],
         )
 
+    def test_accepts_native_camera_page(self):
+        value = layout_module.validate_layout({
+            "schema_version": 1,
+            "revision": "camera-page",
+            "pages": [{"id": "camera", "widgets": [{
+                "type": "camera",
+                "stream_base_url": "rtsp://192.0.2.76:46211/prebuffer",
+                "stream_name": "doorbell_sub",
+                "incoming_audio": True,
+                "tap_action": "intercom",
+            }]}],
+        })
+        self.assertEqual("camera", value["pages"][0]["widgets"][0]["type"])
+
+        value["pages"][0]["widgets"][0]["tap_action"] = "browser"
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(value)
+
 
 if __name__ == "__main__":
     unittest.main()
