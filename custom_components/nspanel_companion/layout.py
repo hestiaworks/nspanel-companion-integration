@@ -38,6 +38,10 @@ def validate_layout(value: Any) -> dict[str, Any]:
             entity_id = widget.get("entity_id")
             if entity_id is not None and not ENTITY_ID.fullmatch(str(entity_id)):
                 raise ValueError("Invalid entity ID")
+            if widget.get("type") == "weather":
+                forecast_days = int(widget.get("forecast_days", 5))
+                if forecast_days not in {1, 3, 5}:
+                    raise ValueError("Weather forecast must show 1, 3, or 5 days")
     if len(set(ids)) != len(ids):
         raise ValueError("Page IDs must be unique")
     default_page = str(value.get("default_page_id") or ids[0])
