@@ -89,6 +89,21 @@ class LayoutValidationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             layout_module.validate_layout(layout)
 
+    def test_validates_gradual_cover_script(self):
+        layout = {
+            "schema_version": 1,
+            "revision": "gradual-cover",
+            "pages": [{"id": "controls", "widgets": [{
+                "type": "entity_button",
+                "entity_id": "cover.bedroom",
+                "gradual_cover_script": "script.gradually_open_bedroom",
+            }]}],
+        }
+        layout_module.validate_layout(layout)
+        layout["pages"][0]["widgets"][0]["gradual_cover_script"] = "switch.not_a_script"
+        with self.assertRaisesRegex(ValueError, "script"):
+            layout_module.validate_layout(layout)
+
     def test_normalizes_doorbell_settings(self):
         value = layout_module.validate_layout({
             "schema_version": 1,

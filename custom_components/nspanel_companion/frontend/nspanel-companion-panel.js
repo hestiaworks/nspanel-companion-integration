@@ -740,12 +740,12 @@ class NSPanelCompanionPanel extends HTMLElement {
       };
       input.addEventListener("focus", filter);
       input.addEventListener("input", () => {
-        const hidden = picker?.querySelector("[data-widget-field='entity_id']");
+        const hidden = picker?.querySelector("input[type='hidden'][data-widget-field]");
         if (hidden) hidden.value = "";
         filter();
       });
       results?.querySelectorAll("[data-entity-option]").forEach((option) => option.addEventListener("click", () => {
-        const hidden = picker.querySelector("[data-widget-field='entity_id']");
+        const hidden = picker.querySelector("input[type='hidden'][data-widget-field]");
         hidden.value = option.dataset.entityOption;
         input.value = option.dataset.entityLabel;
         results.hidden = true;
@@ -885,12 +885,12 @@ class NSPanelCompanionPanel extends HTMLElement {
     return `${state.attributes?.friendly_name || state.entity_id} · ${state.entity_id}`;
   }
 
-  entityPicker(domains, selected, placeholder, field, key) {
+  entityPicker(domains, selected, placeholder, field, key, fieldName = "entity_id") {
     const states = Object.values(this._hass?.states || {}).filter((item) => domains.includes(item.entity_id.split(".")[0]));
     states.sort((a, b) => this.entityLabel(a).localeCompare(this.entityLabel(b)));
     const selectedState = states.find((item) => item.entity_id === selected);
     const display = selectedState ? this.entityLabel(selectedState) : selected;
-    return `<div class="entity-picker" data-entity-picker="${escapeHtml(key)}"><input type="hidden" ${field("entity_id")} value="${escapeHtml(selected)}"><input class="entity-search" data-entity-search="${escapeHtml(key)}" type="search" value="${escapeHtml(display)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" aria-label="${escapeHtml(placeholder)}"><div class="entity-results" data-entity-results="${escapeHtml(key)}" hidden>${states.map((state) => { const label = this.entityLabel(state); return `<button type="button" data-entity-option="${escapeHtml(state.entity_id)}" data-entity-label="${escapeHtml(label)}" data-entity-terms="${escapeHtml(label.toLowerCase())}"><b>${escapeHtml(state.attributes?.friendly_name || state.entity_id)}</b><small>${escapeHtml(state.entity_id)}</small></button>`; }).join("")}</div></div>`;
+    return `<div class="entity-picker" data-entity-picker="${escapeHtml(key)}"><input type="hidden" ${field(fieldName)} value="${escapeHtml(selected || "")}"><input class="entity-search" data-entity-search="${escapeHtml(key)}" type="search" value="${escapeHtml(display || "")}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" aria-label="${escapeHtml(placeholder)}"><div class="entity-results" data-entity-results="${escapeHtml(key)}" hidden>${states.map((state) => { const label = this.entityLabel(state); return `<button type="button" data-entity-option="${escapeHtml(state.entity_id)}" data-entity-label="${escapeHtml(label)}" data-entity-terms="${escapeHtml(label.toLowerCase())}"><b>${escapeHtml(state.attributes?.friendly_name || state.entity_id)}</b><small>${escapeHtml(state.entity_id)}</small></button>`; }).join("")}</div></div>`;
   }
 
   widgetName(widget) {
@@ -916,7 +916,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     const pickerKey = `${page.id}-${index}`;
     if (widget.type === "thermostat") configuration = `<label>Climate entity${this.entityPicker(["climate"], entity, "Search thermostats…", field, pickerKey)}</label><small>Heat, cool, auto, dry, and dual set points follow the capabilities reported by this entity.</small>`;
     if (widget.type === "weather") configuration = `<div class="widget-fields"><label>Weather entity${this.entityPicker(["weather"], entity, "Search weather entities…", field, pickerKey)}</label><label>Daily forecast<select ${field("forecast_days")}><option value="1" ${Number(widget.forecast_days ?? 5) === 1 ? "selected" : ""}>1 day</option><option value="3" ${Number(widget.forecast_days ?? 5) === 3 ? "selected" : ""}>3 days</option><option value="5" ${Number(widget.forecast_days ?? 5) === 5 ? "selected" : ""}>5 days</option></select></label></div><label class="check"><input type="checkbox" ${field("show_hourly")} ${widget.show_hourly !== false ? "checked" : ""}> Show next-hours forecast</label>`;
-    if (widget.type === "entity_button") configuration = `<label>Control entity${this.entityPicker(["light", "fan", "switch", "input_boolean", "cover"], entity, "Search lights, fans, switches, and covers…", field, pickerKey)}</label><small>The panel automatically uses the correct native control for this entity's capabilities.</small>${this.iconPicker(page, widget, index, field)}<div class="control-checks inline-checks"><label class="check"><input type="checkbox" ${field("show_timer")} ${widget.show_timer !== false ? "checked" : ""}> Show timer</label><label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label><label class="check"><input type="checkbox" ${field("show_fan_speed")} ${widget.show_fan_speed === true ? "checked" : ""}> Show fan speed control</label></div><label>Timer presets in minutes<input ${field("timer_presets")} value="${escapeHtml((widget.timer_presets || [5, 15, 30, 60]).join(", "))}" placeholder="5, 15, 30, 60"><small>Up to four touch-friendly choices.</small></label>`;
+    if (widget.type === "entity_button") configuration = `<label>Control entity${this.entityPicker(["light", "fan", "switch", "input_boolean", "cover"], entity, "Search lights, fans, switches, and covers…", field, pickerKey)}</label><small>The panel automatically uses the correct native control for this entity's capabilities.</small>${this.iconPicker(page, widget, index, field)}<div class="control-checks inline-checks"><label class="check"><input type="checkbox" ${field("show_timer")} ${widget.show_timer !== false ? "checked" : ""}> Show timer</label><label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label><label class="check"><input type="checkbox" ${field("show_fan_speed")} ${widget.show_fan_speed === true ? "checked" : ""}> Show fan speed control</label></div><label>Timer presets in minutes<input ${field("timer_presets")} value="${escapeHtml((widget.timer_presets || [5, 15, 30, 60]).join(", "))}" placeholder="5, 15, 30, 60"><small>Up to four touch-friendly choices.</small></label>${entity.startsWith("cover.") ? `<label>Gradual curtain script (optional)${this.entityPicker(["script"], widget.gradual_cover_script || null, "Search script entities…", field, `${pickerKey}-gradual`, "gradual_cover_script")}</label><small>Used by the scheduled gradual-open action and the curtain controls.</small>` : ""}`;
     if (widget.type === "sensor") configuration = `<label>Sensor entity${this.entityPicker(["sensor", "binary_sensor"], entity, "Search sensors…", field, pickerKey)}</label>`;
     if (widget.type === "camera") {
       const selectedCamera = widget.scrypted_bridge_id && widget.scrypted_camera_id ? `${widget.scrypted_bridge_id}|${widget.scrypted_camera_id}` : "";

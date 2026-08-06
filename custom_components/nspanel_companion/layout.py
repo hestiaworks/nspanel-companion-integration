@@ -71,6 +71,9 @@ def validate_layout(value: Any) -> dict[str, Any]:
                     or any(not isinstance(value, int) or not 1 <= value <= 1440 for value in timer_presets)
                 ):
                     raise ValueError("Timer presets must contain 1–4 minute values")
+                gradual_script = widget.get("gradual_cover_script")
+                if gradual_script is not None and (not ENTITY_ID.fullmatch(str(gradual_script)) or not str(gradual_script).startswith("script.")):
+                    raise ValueError("Gradual cover script must be a script entity")
             if widget.get("type") == "camera":
                 if str(widget.get("tap_action", "fullscreen")) not in {"none", "fullscreen", "intercom"}:
                     raise ValueError("Invalid camera tap action")

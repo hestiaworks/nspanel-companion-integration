@@ -5,13 +5,14 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DOMAIN
+from .const import DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .frontend import async_register_panel, async_setup_frontend_assets, async_unregister_panel
 from .http import register_pairing_views
 from .pairing import PairingManager
 from .panel_discovery import PanelDiscovery
 from .registry import PanelRegistry
 from .scrypted import ScryptedDiscovery
+from .schedules import ScheduleManager
 from .websocket import async_register_websocket_commands
 
 
@@ -26,6 +27,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         discovery = domain_data[DATA_SCRYPTED_DISCOVERY] = ScryptedDiscovery(hass)
         await discovery.async_start()
         domain_data[DATA_PANEL_DISCOVERY] = PanelDiscovery(hass)
+        schedules = domain_data[DATA_SCHEDULES] = ScheduleManager(hass)
+        await schedules.async_load()
         domain_data[DATA_WEBSOCKET_REGISTERED] = True
     return True
 

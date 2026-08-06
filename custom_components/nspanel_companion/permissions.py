@@ -12,6 +12,7 @@ SERVICES = {
     "input_boolean": {"toggle", "turn_on", "turn_off"},
     "fan": {"toggle", "turn_on", "turn_off", "set_percentage"},
     "cover": {"open_cover", "close_cover", "stop_cover", "set_cover_position"},
+    "script": {"turn_on", "turn_off"},
 }
 
 
@@ -26,6 +27,9 @@ def allowed_entity_ids(layout: dict[str, Any] | None, available: Iterable[str]) 
             if entity_id := widget.get("entity_id"):
                 if entity_id in available_ids:
                     allowed.add(entity_id)
+                gradual_script = widget.get("gradual_cover_script")
+                if gradual_script in available_ids:
+                    allowed.add(gradual_script)
                 continue
             widget_type = widget.get("type")
             if widget_type == "thermostat":
