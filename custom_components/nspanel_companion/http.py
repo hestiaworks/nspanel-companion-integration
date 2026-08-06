@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from aiohttp import WSMsgType, web
 
 from homeassistant.components.http import HomeAssistantView
@@ -114,6 +116,8 @@ class PanelWebSocketView(HomeAssistantView):
 
         await socket.send_json({
             "type": "initial_states",
+            "server_time_ms": int(time.time() * 1000),
+            "server_timezone": self._hass.config.time_zone,
             "states": [state_json(state) for entity_id in entities if (state := self._hass.states.get(entity_id))],
         })
         schedules: ScheduleManager = self._hass.data[DOMAIN][DATA_SCHEDULES]
