@@ -211,11 +211,14 @@ async def ws_updater_discover(hass, connection, msg) -> None:
     vol.Required("type"): "nspanel_companion/updater/update",
     vol.Required("address"): str,
     vol.Required("classification"): vol.In(["nspanel-companion", "probable-nspanel"]),
+    vol.Optional("source", default="github"): vol.In(["github", "local"]),
+    vol.Optional("migrate_debug", default=False): bool,
 })
 async def ws_updater_update(hass, connection, msg) -> None:
     try:
         connection.send_result(msg["id"], await _registry(hass).async_updater_request("/api/update", {
             "address": msg["address"], "classification": msg["classification"],
+            "source": msg["source"], "migrate_debug": msg["migrate_debug"],
         }))
     except ValueError as err:
         connection.send_error(msg["id"], "updater_update_failed", str(err))
