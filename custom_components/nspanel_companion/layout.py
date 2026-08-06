@@ -42,6 +42,12 @@ def validate_layout(value: Any) -> dict[str, Any]:
                 forecast_days = int(widget.get("forecast_days", 5))
                 if forecast_days not in {1, 3, 5}:
                     raise ValueError("Weather forecast must show 1, 3, or 5 days")
+            if widget.get("type") == "entity_button":
+                if str(widget.get("icon", "auto")) not in {"auto", "light", "fan", "power", "cover", "plug"}:
+                    raise ValueError("Invalid control icon")
+                for option in ("show_timer", "card_tap"):
+                    if option in widget and not isinstance(widget[option], bool):
+                        raise ValueError(f"{option} must be a boolean")
     if len(set(ids)) != len(ids):
         raise ValueError("Page IDs must be unique")
     default_page = str(value.get("default_page_id") or ids[0])
