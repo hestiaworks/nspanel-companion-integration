@@ -8,9 +8,10 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import callback
 
 from .pairing import PairingManager
-from .const import DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DOMAIN
+from .const import DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .registry import PanelRegistry
 from .permissions import allowed_entity_ids, service_allowed
+from .schedules import ScheduleManager
 
 
 class PairingStartView(HomeAssistantView):
@@ -115,6 +116,8 @@ class PanelWebSocketView(HomeAssistantView):
             "type": "initial_states",
             "states": [state_json(state) for entity_id in entities if (state := self._hass.states.get(entity_id))],
         })
+        schedules: ScheduleManager = self._hass.data[DOMAIN][DATA_SCHEDULES]
+        await socket.send_json({"type": "schedules", "schedules": schedules.list_for(entities)})
 
         weather_entities = [entity_id for entity_id in entities if entity_id.startswith("weather.")]
 
@@ -194,6 +197,14 @@ class PanelWebSocketView(HomeAssistantView):
                 data = {}
                 try:
                     data = message.json()
+                    if data.get("type") == "schedule_upsert":
+                        await schedules.async_upsert(dict(data.get("schedule") or {}), entities)
+                        await socket.send_json({"type": "schedules", "schedules": schedules.list_for(entities)})
+                        continue
+                    if data.get("type") == "schedule_delete":
+                        await schedules.async_delete(str(data.get("schedule_id", "")), entities)
+                        await socket.send_json({"type": "schedules", "schedules": schedules.list_for(entities)})
+                        continue
                     if data.get("type") != "call_service":
                         raise ValueError("Unsupported panel message")
                     entity_id = str(data.get("entity_id", ""))
