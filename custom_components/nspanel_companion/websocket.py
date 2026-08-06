@@ -191,7 +191,16 @@ async def ws_unpair_updater(hass, connection, msg) -> None:
 })
 async def ws_updater_discover(hass, connection, msg) -> None:
     try:
-        connection.send_result(msg["id"], await _registry(hass).async_updater_request("/api/discover", {"subnet": msg["subnet"]}))
+        result = await _registry(hass).async_updater_request(
+            "/api/discover", {"subnet": msg["subnet"]}
+        )
+        devices = result.get("devices", [])
+        result["devices"] = [
+            device for device in devices
+            if device.get("adb_state") == "device"
+            and device.get("classification") in {"nspanel-companion", "probable-nspanel"}
+        ]
+        connection.send_result(msg["id"], result)
     except ValueError as err:
         connection.send_error(msg["id"], "updater_discovery_failed", str(err))
 
