@@ -31,6 +31,7 @@ class PanelRegistry:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._panels: dict[str, dict[str, Any]] = {}
         self._scrypted_bridges: dict[str, dict[str, Any]] = {}
+        self._updater: dict[str, Any] | None = None
         self._settings: dict[str, Any] = {"passive_panel_discovery": False}
 
     async def async_load(self) -> None:
@@ -39,6 +40,8 @@ class PanelRegistry:
         self._scrypted_bridges = {
             item["id"]: item for item in data.get("scrypted_bridges", []) if "id" in item
         }
+        updater = data.get("updater")
+        self._updater = updater if isinstance(updater, dict) and updater.get("token") else None
         self._settings.update(data.get("settings", {}))
 
     @property
@@ -51,6 +54,73 @@ class PanelRegistry:
 
     def list_scrypted_bridges(self) -> list[dict[str, Any]]:
         return [self._public_bridge(item) for item in self._scrypted_bridges.values()]
+
+    def updater_public(self) -> dict[str, Any] | None:
+        """Return updater metadata without exposing its bearer token."""
+        if not self._updater:
+            return None
+        return {key: value for key, value in self._updater.items() if key != "token"}
+
+    async def async_pair_updater(self, base_url: str, code: str) -> dict[str, Any]:
+        base_url = base_url.strip().rstrip("/")
+        if not base_url.startswith(("http://", "https://")):
+            raise ValueError("Invalid updater URL")
+        if not re.fullmatch(r"\d{6}", code.strip()):
+            raise ValueError("Pairing code must contain six digits")
+        session = async_get_clientsession(self._hass)
+        try:
+            async with session.post(
+                f"{base_url}/api/pair", json={"code": code.strip()}, timeout=15
+            ) as response:
+                payload = await response.json()
+                if response.status != 200:
+                    raise ValueError(payload.get("error", "Updater pairing failed"))
+        except ValueError:
+            raise
+        except Exception as err:
+            raise ValueError(f"Unable to reach updater: {err}") from err
+        updater_id = str(payload.get("id") or "").strip()
+        token = str(payload.get("token") or "").strip()
+        if not updater_id or not token:
+            raise ValueError("Updater returned an invalid pairing response")
+        self._updater = {
+            "id": updater_id,
+            "name": str(payload.get("name") or "NSPanel Companion Updater")[:64],
+            "base_url": base_url,
+            "token": token,
+            "paired_at": datetime.now(UTC).isoformat(),
+        }
+        await self._save()
+        return self.updater_public() or {}
+
+    async def async_updater_request(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self._updater:
+            raise ValueError("Pair the NSPanel Updater add-on first")
+        session = async_get_clientsession(self._hass)
+        try:
+            async with session.post(
+                f"{self._updater['base_url']}{path}",
+                headers={"Authorization": f"Bearer {self._updater['token']}"},
+                json=payload,
+                timeout=330 if path == "/api/update" else 100,
+            ) as response:
+                result = await response.json()
+                if response.status != 200:
+                    raise ValueError(result.get("error", "Updater request failed"))
+                return result
+        except ValueError:
+            raise
+        except Exception as err:
+            raise ValueError(f"Unable to reach updater: {err}") from err
+
+    async def async_unpair_updater(self) -> None:
+        if not self._updater:
+            return
+        try:
+            await self.async_updater_request("/api/unpair", {})
+        finally:
+            self._updater = None
+            await self._save()
 
     async def async_pair_scrypted(self, base_url: str, code: str) -> dict[str, Any]:
         base_url = base_url.strip().rstrip("/")
@@ -353,6 +423,7 @@ class PanelRegistry:
         return {
             "panels": list(self._panels.values()),
             "scrypted_bridges": list(self._scrypted_bridges.values()),
+            "updater": self._updater,
             "settings": self._settings,
         }
 
