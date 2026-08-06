@@ -40,6 +40,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('["general","General"]', source)
         self.assertIn('data-workspace-panel="diagnostics"', source)
         self.assertIn("workspaceRoute", source)
+        self.assertIn("No pages configured", source)
+        self.assertIn("hasPublishedLayout: Boolean(layout)", source)
         self.assertIn('customElements.define("ha-panel-nspanel-companion-panel"', source)
         self.assertIn("customElements.define", source)
 
@@ -52,6 +54,10 @@ class FrontendContractTest(unittest.TestCase):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
         self.assertEqual(19, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
+
+    def test_panel_sync_includes_human_readable_name(self):
+        source = (ROOT / "custom_components/nspanel_companion/http.py").read_text()
+        self.assertIn('"panel_name": record.get("name")', source)
 
 
 if __name__ == "__main__":

@@ -72,6 +72,7 @@ class PanelSyncView(HomeAssistantView):
             layout = record.get("layout") if record.get("layout_revision") != current_revision else None
             return web.json_response({
                 "panel_id": panel_id,
+                "panel_name": record.get("name"),
                 "layout_revision": record.get("layout_revision"),
                 "layout": layout,
                 "heartbeat_seconds": 15,
