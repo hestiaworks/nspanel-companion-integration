@@ -11,6 +11,14 @@ CONTROL_ICONS = {
     "fan", "ceiling-fan", "ventilation", "power", "switch", "plug", "socket", "curtains", "cover",
     "blinds", "shutter", "garage", "radiator", "air-conditioner", "fireplace", "lock",
     "gate", "pump", "vacuum", "speaker",
+    "table-lamp", "chandelier", "pendant-light", "outdoor-light", "night-light", "desk-lamp",
+    "desk-fan", "air-purifier", "humidifier", "dehumidifier", "extractor-fan", "power-strip",
+    "battery", "solar", "energy", "meter", "ups", "awning", "window", "door", "skylight",
+    "thermostat", "heater", "boiler", "temperature", "snowflake", "unlock", "alarm", "shield",
+    "camera", "motion", "presence", "bell", "kitchen", "oven", "microwave", "fridge",
+    "dishwasher", "washing-machine", "dryer", "coffee", "kettle", "robot-vacuum", "broom",
+    "water", "faucet", "sprinkler", "pool", "shower", "television", "music", "radio",
+    "gamepad", "projector", "bedroom", "bathroom", "office", "garden", "balcony", "stairs",
 }
 PAGE_ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 ENTITY_ID = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")

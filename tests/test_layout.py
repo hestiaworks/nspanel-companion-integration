@@ -78,7 +78,7 @@ class LayoutValidationTest(unittest.TestCase):
             "pages": [{"id": "controls", "widgets": [{
                 "type": "entity_button",
                 "entity_id": "light.ceiling",
-                "icon": "fan",
+                "icon": "washing-machine",
                 "show_timer": False,
                 "card_tap": True,
             }]}],
