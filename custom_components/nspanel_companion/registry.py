@@ -288,15 +288,20 @@ class PanelRegistry:
 
     async def async_set_layout(self, panel_id: str, layout: dict[str, Any]) -> dict[str, Any]:
         record = self._require(panel_id)
-        layout = await self._hydrate_camera_widgets(layout)
+        existing_doorbell = dict((record.get("layout") or {}).get("doorbell") or {})
+        layout = await self._hydrate_camera_widgets(layout, existing_doorbell)
         normalized = validate_layout(layout)
         record["layout"] = normalized
         record["layout_revision"] = normalized["revision"]
         await self._save()
         return self._public(record)
 
-    async def _hydrate_camera_widgets(self, layout: dict[str, Any]) -> dict[str, Any]:
+    async def _hydrate_camera_widgets(
+        self, layout: dict[str, Any], existing_doorbell: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         hydrated = dict(layout)
+        doorbell = dict(existing_doorbell or {})
+        doorbell.update(layout.get("doorbell") or {})
         pages = [dict(page) for page in layout.get("pages", [])]
         cache: dict[str, list[dict[str, Any]]] = {}
         for page in pages:
@@ -313,8 +318,19 @@ class PanelRegistry:
                 selected = next((item for item in cache[bridge_id] if item.get("id") == camera_id), None)
                 if not selected:
                     raise ValueError("Unknown Scrypted camera")
-                widget["stream_base_url"] = selected.get("video_url", "")
-                widget["stream_name"] = selected.get("stream_name", "") or "doorbell_sub"
+                same_configured_doorbell = (
+                    bridge_id == str(doorbell.get("scrypted_bridge_id", ""))
+                    and camera_id == str(doorbell.get("scrypted_doorbell_id", ""))
+                    and bool(doorbell.get("stream_base_url"))
+                )
+                widget["stream_base_url"] = (
+                    doorbell.get("stream_base_url", "")
+                    if same_configured_doorbell else selected.get("video_url", "")
+                )
+                widget["stream_name"] = (
+                    doorbell.get("stream_name", "")
+                    if same_configured_doorbell else selected.get("stream_name", "")
+                ) or "doorbell_sub"
                 widget["talkback_url"] = selected.get("talkback_url", "")
                 widget["talkback_key"] = selected.get("talkback_key", "")
             page["widgets"] = widgets
