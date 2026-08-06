@@ -139,6 +139,7 @@ class PanelWebSocketView(HomeAssistantView):
                         "talkback_key": doorbell_config.get("talkback_key", ""),
                         "quiet_mode": doorbell_config.get("quiet_mode", False),
                         "auto_close_ms": doorbell_config.get("auto_close_ms", 60000),
+                        "talk_extend_ms": doorbell_config.get("talk_extend_ms", 15000) if doorbell_config.get("talk_extend_enabled", True) else 0,
                     },
                 }))
 

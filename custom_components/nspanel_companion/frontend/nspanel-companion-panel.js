@@ -282,11 +282,12 @@ class NSPanelCompanionPanel extends HTMLElement {
     try {
       const panel = this.panels.find((item) => item.panel_id === panelId);
       const layout = await this.call({ type: "nspanel_companion/layout/get", panel_id: panelId });
-      this.scryptedDoorbells = [];
+      const discoveredDoorbells = [];
       for (const bridge of this.scrypted.paired || []) {
         const items = await this.call({ type: "nspanel_companion/scrypted/doorbells", bridge_id: bridge.id });
-        this.scryptedDoorbells.push(...items.map((item) => ({ ...item, bridge_id: bridge.id })));
+        discoveredDoorbells.push(...items.map((item) => ({ ...item, bridge_id: bridge.id })));
       }
+      this.scryptedDoorbells = [...new Map(discoveredDoorbells.map((item) => [`${item.bridge_id}|${item.id}`, item])).values()];
       this.workspaceTab = tab;
       const fallback = DEFAULT_LAYOUT(`panel-${Date.now()}`);
       this.editor = {
@@ -523,6 +524,8 @@ class NSPanelCompanionPanel extends HTMLElement {
         scrypted_doorbell_id: scryptedDoorbellId,
         quiet_mode: values.get("quiet_mode") === "on",
         auto_close_ms: Number(values.get("auto_close_seconds") || 60) * 1000,
+        talk_extend_enabled: values.get("talk_extend_enabled") === "on",
+        talk_extend_ms: Number(values.get("talk_extend_seconds") || 15) * 1000,
       },
     };
     this.busy = true; this.error = "";
@@ -994,6 +997,8 @@ class NSPanelCompanionPanel extends HTMLElement {
             <label>Talkback access key<input name="talkback_key" type="text" value="${escapeHtml(doorbell.talkback_key || "")}" autocomplete="off"><small>Copy the access key from the Scrypted extension.</small></label>
             </details>
             <label>Close after<input name="auto_close_seconds" type="number" min="10" max="300" value="${Number(doorbell.auto_close_ms || 60000) / 1000}"><small>10–300 seconds.</small></label>
+            <label class="check"><input name="talk_extend_enabled" type="checkbox" ${doorbell.talk_extend_enabled !== false ? "checked" : ""}> Extend timeout after hold-to-talk</label>
+            <label>Talk extension<input name="talk_extend_seconds" type="number" min="5" max="60" value="${Number(doorbell.talk_extend_ms || 15000) / 1000}"><small>Add 5–60 seconds to the remaining time after each completed hold-to-talk interaction.</small></label>
             <label class="check"><input name="quiet_mode" type="checkbox" ${doorbell.quiet_mode ? "checked" : ""}> Start with incoming audio muted</label>
           </fieldset>
           <div class="actions"><button data-test-doorbell="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Test doorbell</button><button data-close-editor type="button">Cancel</button><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Publish to panel</button></div>

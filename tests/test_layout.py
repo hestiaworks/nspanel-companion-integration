@@ -101,10 +101,14 @@ class LayoutValidationTest(unittest.TestCase):
                 "talkback_url": "http://192.0.2.76:11081/talk/44/",
                 "talkback_key": "0123456789abcdef",
                 "auto_close_ms": 45000,
+                "talk_extend_enabled": True,
+                "talk_extend_ms": 20000,
             },
         })
         self.assertEqual("http://192.0.2.76:1984", value["doorbell"]["stream_base_url"])
         self.assertEqual(45000, value["doorbell"]["auto_close_ms"])
+        self.assertTrue(value["doorbell"]["talk_extend_enabled"])
+        self.assertEqual(20000, value["doorbell"]["talk_extend_ms"])
         self.assertEqual("http://192.0.2.76:11081/talk/44", value["doorbell"]["talkback_url"])
         self.assertEqual("0123456789abcdef", value["doorbell"]["talkback_key"])
         self.assertFalse(value["doorbell"]["quiet_mode"])
@@ -115,6 +119,7 @@ class LayoutValidationTest(unittest.TestCase):
             {"stream_name": "../../secret"},
             {"trigger_entity_id": "not-an-entity"},
             {"auto_close_ms": 5000},
+            {"talk_extend_ms": 4000},
             {"talkback_url": "rtsp://192.0.2.76/talk"},
             {"talkback_key": "too-short"},
         ):
