@@ -71,6 +71,23 @@ class LayoutValidationTest(unittest.TestCase):
                 "pages": [{"id": "room", "widgets": [{"type": "webview"}]}],
             })
 
+    def test_validates_control_presentation_options(self):
+        layout = {
+            "schema_version": 1,
+            "revision": "control-options",
+            "pages": [{"id": "controls", "widgets": [{
+                "type": "entity_button",
+                "entity_id": "light.ceiling",
+                "icon": "fan",
+                "show_timer": False,
+                "card_tap": True,
+            }]}],
+        }
+        layout_module.validate_layout(layout)
+        layout["pages"][0]["widgets"][0]["icon"] = "javascript"
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(layout)
+
     def test_normalizes_doorbell_settings(self):
         value = layout_module.validate_layout({
             "schema_version": 1,
