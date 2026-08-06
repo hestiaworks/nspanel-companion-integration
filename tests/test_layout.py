@@ -80,6 +80,7 @@ class LayoutValidationTest(unittest.TestCase):
                 "entity_id": "light.ceiling",
                 "icon": "washing-machine",
                 "show_timer": False,
+                "timer_presets": [5, 15, 30, 60],
                 "card_tap": True,
             }]}],
         }
