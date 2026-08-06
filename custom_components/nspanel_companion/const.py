@@ -11,5 +11,5 @@ STORAGE_VERSION = 1
 LAYOUT_EVENT = "nspanel_layout"
 PANEL_COMPONENT = "nspanel-companion-panel"
 PANEL_URL_PATH = "nspanel-companion"
-PANEL_MODULE_URL = "/nspanel_companion/frontend/nspanel-companion-panel.js?v=0.28.7"
+PANEL_MODULE_URL = "/nspanel_companion/frontend/nspanel-companion-panel.js?v=0.28.8"
 PAIRING_TTL_SECONDS = 300
