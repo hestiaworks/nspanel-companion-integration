@@ -661,7 +661,8 @@ class NSPanelCompanionPanel extends HTMLElement {
         type: "nspanel_companion/updater/discover",
         subnet: String(values.get("subnet") || "").trim(),
       });
-      this.adbDevices = result.devices || [];
+      this.adbDevices = (result.devices || []).filter((device) =>
+        ["nspanel-companion", "probable-nspanel"].includes(device.classification));
       this.updaterMessage = this.adbDevices.length ? `Found ${this.adbDevices.length} ADB device${this.adbDevices.length === 1 ? "" : "s"}.` : "No ADB-enabled devices found.";
     } catch (error) { this.error = error?.message || "Unable to scan for ADB panels"; this.updaterMessage = ""; }
     finally { this.busy = false; this.render(); }
@@ -681,7 +682,8 @@ class NSPanelCompanionPanel extends HTMLElement {
       this.updaterMessage = result.message || "Update completed.";
       const subnet = this.shadowRoot.querySelector("#adb-subnet")?.value || "192.168.0.0/24";
       const refreshed = await this.call({ type: "nspanel_companion/updater/discover", subnet });
-      this.adbDevices = refreshed.devices || [];
+      this.adbDevices = (refreshed.devices || []).filter((item) =>
+        ["nspanel-companion", "probable-nspanel"].includes(item.classification));
     } catch (error) { this.error = error?.message || "Unable to update panel"; this.updaterMessage = ""; }
     finally { this.busy = false; this.render(); }
   }
