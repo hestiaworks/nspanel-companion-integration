@@ -22,6 +22,26 @@ class LayoutValidationTest(unittest.TestCase):
         self.assertEqual(60, value["default_page_return_seconds"])
         self.assertEqual(360, value["weather_cache_max_age_minutes"])
         self.assertFalse(value["keep_screen_on"])
+        self.assertEqual("light", value["theme_mode"])
+        self.assertFalse(value["theme_dark"])
+
+    def test_normalizes_and_validates_panel_theme(self):
+        value = layout_module.validate_layout({
+            "schema_version": 1,
+            "revision": "dark-room",
+            "theme_mode": "inherit",
+            "theme_dark": True,
+            "pages": [{"id": "room", "widgets": []}],
+        })
+        self.assertEqual("inherit", value["theme_mode"])
+        self.assertTrue(value["theme_dark"])
+        with self.assertRaisesRegex(ValueError, "theme"):
+            layout_module.validate_layout({
+                "schema_version": 1,
+                "revision": "bad-theme",
+                "theme_mode": "purple",
+                "pages": [{"id": "room", "widgets": []}],
+            })
 
     def test_normalizes_keep_screen_on(self):
         value = layout_module.validate_layout({

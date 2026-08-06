@@ -11,6 +11,8 @@ active cached revision.
   "default_page_id": "room",
   "default_page_return_seconds": 60,
   "weather_cache_max_age_minutes": 360,
+  "theme_mode": "inherit",
+  "theme_dark": true,
   "pages": [
     {
       "id": "room",
@@ -47,12 +49,15 @@ Limits:
 - `default_page_return_seconds` accepts 0–3600; `0` disables automatic return.
 - `weather_cache_max_age_minutes` accepts 0–10080 and defaults to 360 (six
   hours); `0` disables cached weather restore.
+- `theme_mode` is `light`, `dark`, or `inherit`. For `inherit`, `theme_dark`
+  carries the active Home Assistant appearance resolved during publication.
+  Older layouts without theme fields remain light.
 - Unknown schema versions and widget types are rejected.
 
 The active revision is stored as `dashboard-layout.json` in Android internal
 storage. Updates are written to a temporary file and atomically renamed. A
-missing or invalid cache falls back to the built-in thermostat, weather, and
-controls layout.
+paired panel with no valid cached or published layout shows the native
+configuration-required screen until the user publishes pages from HA.
 
 Only `weather.*` entities are stored in `weather-cache.json`. Expired entries
 are ignored, and cached values are marked with their age while Home Assistant
