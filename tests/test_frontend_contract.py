@@ -42,6 +42,10 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("workspaceRoute", source)
         self.assertIn("No pages configured", source)
         self.assertIn("hasPublishedLayout: Boolean(layout)", source)
+        self.assertIn("draftPages", source)
+        self.assertIn("addDraftPage", source)
+        self.assertIn('data-page-action="duplicate"', source)
+        self.assertIn('name="default_page"', source)
         self.assertIn('customElements.define("ha-panel-nspanel-companion-panel"', source)
         self.assertIn("customElements.define", source)
 
