@@ -1,0 +1,23 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test integration and frontend contract
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          node --check custom_components/nspanel_companion/frontend/nspanel-companion-panel.js
+          for f in tools/*.js; do node --check "$f"; done
