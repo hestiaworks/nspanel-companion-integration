@@ -80,6 +80,7 @@ class LayoutValidationTest(unittest.TestCase):
                 "entity_id": "light.ceiling",
                 "icon": "washing-machine",
                 "show_timer": False,
+                "show_schedule": False,
                 "timer_presets": [5, 15, 30, 60],
                 "card_tap": True,
             }]}],
@@ -89,18 +90,19 @@ class LayoutValidationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             layout_module.validate_layout(layout)
 
-    def test_validates_gradual_cover_script(self):
+    def test_validates_gradual_cover_scripts(self):
         layout = {
             "schema_version": 1,
             "revision": "gradual-cover",
             "pages": [{"id": "controls", "widgets": [{
                 "type": "entity_button",
                 "entity_id": "cover.bedroom",
-                "gradual_cover_script": "script.gradually_open_bedroom",
+                "gradual_open_script": "script.gradually_open_bedroom",
+                "gradual_close_script": "script.gradually_close_bedroom",
             }]}],
         }
         layout_module.validate_layout(layout)
-        layout["pages"][0]["widgets"][0]["gradual_cover_script"] = "switch.not_a_script"
+        layout["pages"][0]["widgets"][0]["gradual_close_script"] = "switch.not_a_script"
         with self.assertRaisesRegex(ValueError, "script"):
             layout_module.validate_layout(layout)
 

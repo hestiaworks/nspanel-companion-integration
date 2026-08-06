@@ -61,7 +61,7 @@ def validate_layout(value: Any) -> dict[str, Any]:
             if widget.get("type") == "entity_button":
                 if str(widget.get("icon", "auto")) not in CONTROL_ICONS:
                     raise ValueError("Invalid control icon")
-                for option in ("show_timer", "card_tap", "show_fan_speed"):
+                for option in ("show_timer", "show_schedule", "card_tap", "show_fan_speed"):
                     if option in widget and not isinstance(widget[option], bool):
                         raise ValueError(f"{option} must be a boolean")
                 timer_presets = widget.get("timer_presets", [5, 15, 30, 60])
@@ -71,9 +71,10 @@ def validate_layout(value: Any) -> dict[str, Any]:
                     or any(not isinstance(value, int) or not 1 <= value <= 1440 for value in timer_presets)
                 ):
                     raise ValueError("Timer presets must contain 1–4 minute values")
-                gradual_script = widget.get("gradual_cover_script")
-                if gradual_script is not None and (not ENTITY_ID.fullmatch(str(gradual_script)) or not str(gradual_script).startswith("script.")):
-                    raise ValueError("Gradual cover script must be a script entity")
+                for script_field in ("gradual_cover_script", "gradual_open_script", "gradual_close_script"):
+                    gradual_script = widget.get(script_field)
+                    if gradual_script is not None and (not ENTITY_ID.fullmatch(str(gradual_script)) or not str(gradual_script).startswith("script.")):
+                        raise ValueError(f"{script_field} must be a script entity")
             if widget.get("type") == "camera":
                 if str(widget.get("tap_action", "fullscreen")) not in {"none", "fullscreen", "intercom"}:
                     raise ValueError("Invalid camera tap action")

@@ -27,9 +27,10 @@ def allowed_entity_ids(layout: dict[str, Any] | None, available: Iterable[str]) 
             if entity_id := widget.get("entity_id"):
                 if entity_id in available_ids:
                     allowed.add(entity_id)
-                gradual_script = widget.get("gradual_cover_script")
-                if gradual_script in available_ids:
-                    allowed.add(gradual_script)
+                for script_field in ("gradual_cover_script", "gradual_open_script", "gradual_close_script"):
+                    gradual_script = widget.get(script_field)
+                    if gradual_script in available_ids:
+                        allowed.add(gradual_script)
                 continue
             widget_type = widget.get("type")
             if widget_type == "thermostat":
