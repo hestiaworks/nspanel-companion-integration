@@ -6,6 +6,12 @@ import re
 from typing import Any
 
 SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor"}
+CONTROL_ICONS = {
+    "auto", "light", "ceiling-light", "floor-lamp", "wall-light", "led-strip", "spotlight",
+    "fan", "ceiling-fan", "ventilation", "power", "switch", "plug", "socket", "curtains", "cover",
+    "blinds", "shutter", "garage", "radiator", "air-conditioner", "fireplace", "lock",
+    "gate", "pump", "vacuum", "speaker",
+}
 PAGE_ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 ENTITY_ID = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 STREAM_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -43,7 +49,7 @@ def validate_layout(value: Any) -> dict[str, Any]:
                 if forecast_days not in {1, 3, 5}:
                     raise ValueError("Weather forecast must show 1, 3, or 5 days")
             if widget.get("type") == "entity_button":
-                if str(widget.get("icon", "auto")) not in {"auto", "light", "fan", "power", "cover", "plug"}:
+                if str(widget.get("icon", "auto")) not in CONTROL_ICONS:
                     raise ValueError("Invalid control icon")
                 for option in ("show_timer", "card_tap"):
                     if option in widget and not isinstance(widget[option], bool):
