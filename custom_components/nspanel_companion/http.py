@@ -116,11 +116,42 @@ class PanelWebSocketView(HomeAssistantView):
             "states": [state_json(state) for entity_id in entities if (state := self._hass.states.get(entity_id))],
         })
 
+        weather_entities = [entity_id for entity_id in entities if entity_id.startswith("weather.")]
+
+        async def send_forecast(entity_ids, forecast_type: str) -> None:
+            if socket.closed or not entity_ids:
+                return
+            try:
+                response = await self._hass.services.async_call(
+                    "weather",
+                    "get_forecasts",
+                    {"entity_id": entity_ids, "type": forecast_type},
+                    blocking=True,
+                    return_response=True,
+                )
+                for entity_id, value in (response or {}).items():
+                    forecast = value.get("forecast") if isinstance(value, dict) else None
+                    if isinstance(forecast, list) and not socket.closed:
+                        await socket.send_json({
+                            "type": "weather_forecast",
+                            "entity_id": entity_id,
+                            "forecast_type": forecast_type,
+                            "forecast": forecast,
+                        })
+            except Exception:  # Forecast support differs between weather providers.
+                return
+
+        await send_forecast(weather_entities, "daily")
+        await send_forecast(weather_entities, "hourly")
+
         @callback
         def state_changed(event) -> None:
             state = event.data.get("new_state")
             if state is not None and state.entity_id in entities and not socket.closed:
                 self._hass.async_create_task(socket.send_json({"type": "state_changed", "state": state_json(state)}))
+                if state.entity_id.startswith("weather."):
+                    self._hass.async_create_task(send_forecast([state.entity_id], "daily"))
+                    self._hass.async_create_task(send_forecast([state.entity_id], "hourly"))
             old_state = event.data.get("old_state")
             if (
                 not socket.closed
