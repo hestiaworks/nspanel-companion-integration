@@ -1,0 +1,14 @@
+{
+  "title": "NSPanel Companion",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up NSPanel Companion",
+        "description": "Create the local manager for NSPanel Pro dashboards. Panels can be registered after setup."
+      }
+    },
+    "abort": {
+      "already_configured": "NSPanel Companion is already configured."
+    }
+  }
+}

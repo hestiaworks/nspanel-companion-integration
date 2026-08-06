@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NSPanel HA manager preview</title></head>
+<body style="margin:0"><nspanel-companion-panel></nspanel-companion-panel>
+<script type="module">
+  import "/nspanel-companion-panel.js";
+  const panels = [{panel_id:"nspanel-kitchen",device_id:"nspanel-kitchen",name:"Kitchen",created_at:new Date(Date.now()-86400000).toISOString(),last_seen:null,layout_revision:"default-1"}];
+  const layouts = {"nspanel-kitchen":{schema_version:1,revision:"default-1",default_page_id:"climate",pages:[{id:"climate",title:"Thermostat",widgets:[{type:"thermostat"}]}]}};
+  const pairings = [{request_id:"demo-pairing",device_id:"panel-123e4567e89b12d3a456426614174000",name:"Living room panel",code:"482731",expires_in:267,status:"pending"}];
+  const connection = {sendMessagePromise: async (message) => {
+    if(message.type.endsWith("panels/list")) return structuredClone(panels);
+    if(message.type.endsWith("pairings/list")) return structuredClone(pairings);
+    if(message.type.endsWith("pairings/approve")) { const item=pairings.find(p=>p.request_id===message.request_id); pairings.splice(pairings.indexOf(item),1); panels.push({panel_id:item.device_id,device_id:item.device_id,name:item.name,created_at:new Date().toISOString(),last_seen:null,layout_revision:null}); return {status:"approved"}; }
+    if(message.type.endsWith("panels/register")) { const panel={panel_id:message.device_id.toLowerCase(),device_id:message.device_id,name:message.name,created_at:new Date().toISOString(),last_seen:null,layout_revision:null}; panels.push(panel); return {panel,token:"demo_panel_token_save_this_value_once"}; }
+    if(message.type.endsWith("layout/get")) return layouts[message.panel_id] || null;
+    if(message.type.endsWith("layout/set")) { layouts[message.panel_id]=message.layout; const panel=panels.find(p=>p.panel_id===message.panel_id); panel.layout_revision=message.layout.revision; return panel; }
+    throw new Error("Unsupported preview command");
+  }};
+  const panel = document.querySelector("nspanel-companion-panel"); panel.hass={connection};
+</script></body></html>
