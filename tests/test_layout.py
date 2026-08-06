@@ -25,6 +25,17 @@ class LayoutValidationTest(unittest.TestCase):
         self.assertEqual("light", value["theme_mode"])
         self.assertFalse(value["theme_dark"])
 
+    def test_validates_weather_forecast_length(self):
+        layout = {
+            "schema_version": 1,
+            "revision": "forecast",
+            "pages": [{"id": "weather", "widgets": [{"type": "weather", "forecast_days": 3}]}],
+        }
+        layout_module.validate_layout(layout)
+        layout["pages"][0]["widgets"][0]["forecast_days"] = 4
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(layout)
+
     def test_normalizes_and_validates_panel_theme(self):
         value = layout_module.validate_layout({
             "schema_version": 1,
