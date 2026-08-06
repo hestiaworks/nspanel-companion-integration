@@ -61,7 +61,7 @@ def validate_layout(value: Any) -> dict[str, Any]:
             if widget.get("type") == "entity_button":
                 if str(widget.get("icon", "auto")) not in CONTROL_ICONS:
                     raise ValueError("Invalid control icon")
-                for option in ("show_timer", "card_tap"):
+                for option in ("show_timer", "card_tap", "show_fan_speed"):
                     if option in widget and not isinstance(widget[option], bool):
                         raise ValueError(f"{option} must be a boolean")
                 timer_presets = widget.get("timer_presets", [5, 15, 30, 60])
