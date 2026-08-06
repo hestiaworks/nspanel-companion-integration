@@ -216,6 +216,22 @@ async def ws_register_panel(hass, connection, msg) -> None:
 @websocket_api.require_admin
 @websocket_api.async_response
 @websocket_api.websocket_command({
+    vol.Required("type"): "nspanel_companion/panels/rename",
+    vol.Required("panel_id"): str,
+    vol.Required("name"): str,
+})
+async def ws_rename_panel(hass, connection, msg) -> None:
+    """Update a panel's human-readable name."""
+    try:
+        panel = await _registry(hass).async_rename(msg["panel_id"], msg["name"])
+        connection.send_result(msg["id"], panel)
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_panel_name", str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({
     vol.Required("type"): "nspanel_companion/layout/get",
     vol.Required("panel_id"): str,
 })
@@ -349,6 +365,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register integration commands."""
     websocket_api.async_register_command(hass, ws_list_panels)
     websocket_api.async_register_command(hass, ws_register_panel)
+    websocket_api.async_register_command(hass, ws_rename_panel)
     websocket_api.async_register_command(hass, ws_get_layout)
     websocket_api.async_register_command(hass, ws_get_panel_diagnostics)
     websocket_api.async_register_command(hass, ws_set_layout)

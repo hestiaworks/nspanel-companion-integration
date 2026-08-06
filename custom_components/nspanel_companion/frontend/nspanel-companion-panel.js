@@ -29,6 +29,8 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.error = "";
     this.token = null;
     this.editor = null;
+    this.workspaceTab = "general";
+    this.routeHandler = () => this.restoreWorkspaceRoute();
   }
 
   set hass(value) {
@@ -40,6 +42,8 @@ class NSPanelCompanionPanel extends HTMLElement {
   set panel(value) { this._panel = value; }
 
   connectedCallback() {
+    window.addEventListener("hashchange", this.routeHandler);
+    window.addEventListener("popstate", this.routeHandler);
     this.render();
     if (this._hass && !this.loaded) this.loadPanels();
     this.refreshTimer = setInterval(() => {
@@ -48,7 +52,56 @@ class NSPanelCompanionPanel extends HTMLElement {
     }, 15000);
   }
 
-  disconnectedCallback() { clearInterval(this.refreshTimer); clearInterval(this.finderTimer); }
+  disconnectedCallback() {
+    window.removeEventListener("hashchange", this.routeHandler);
+    window.removeEventListener("popstate", this.routeHandler);
+    clearInterval(this.refreshTimer); clearInterval(this.finderTimer);
+  }
+
+  workspaceRoute(panelId, tab = "general") {
+    return `#panel/${encodeURIComponent(panelId)}/${encodeURIComponent(tab)}`;
+  }
+
+  parsedWorkspaceRoute() {
+    const match = window.location.hash.match(/^#panel\/([^/]+)(?:\/([^/]+))?$/);
+    if (!match) return null;
+    const tabs = new Set(["general", "pages", "doorbell", "diagnostics", "advanced"]);
+    const tab = decodeURIComponent(match[2] || "general");
+    return { panelId: decodeURIComponent(match[1]), tab: tabs.has(tab) ? tab : "general" };
+  }
+
+  async restoreWorkspaceRoute() {
+    const route = this.parsedWorkspaceRoute();
+    if (!route) {
+      if (this.editor) { this.editor = null; this.render(); }
+      return;
+    }
+    if (!this.loaded) return;
+    if (this.editor?.panel.panel_id === route.panelId) {
+      this.selectWorkspaceTab(route.tab, false);
+      return;
+    }
+    if (this.panels.some((panel) => panel.panel_id === route.panelId)) {
+      await this.editPanel(route.panelId, route.tab, false);
+    } else {
+      history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+  }
+
+  selectWorkspaceTab(tab, updateRoute = true) {
+    this.workspaceTab = tab;
+    this.shadowRoot.querySelectorAll("[data-workspace-tab]").forEach((button) =>
+      button.classList.toggle("active", button.dataset.workspaceTab === tab));
+    this.shadowRoot.querySelectorAll("[data-workspace-panel]").forEach((panel) =>
+      panel.toggleAttribute("hidden", panel.dataset.workspacePanel !== tab));
+    if (updateRoute && this.editor) history.pushState(null, "", this.workspaceRoute(this.editor.panel.panel_id, tab));
+  }
+
+  closeWorkspace() {
+    this.editor = null;
+    history.pushState(null, "", `${window.location.pathname}${window.location.search}`);
+    this.render();
+  }
 
   async call(message) {
     if (!this._hass) throw new Error("Home Assistant is not ready");
@@ -70,6 +123,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     } finally {
       this.loading = false;
       this.render();
+      await this.restoreWorkspaceRoute();
     }
   }
 
@@ -187,7 +241,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     finally { this.busy = false; this.render(); }
   }
 
-  async editPanel(panelId) {
+  async editPanel(panelId, tab = "general", updateRoute = true) {
     this.busy = true; this.error = ""; this.render();
     try {
       const panel = this.panels.find((item) => item.panel_id === panelId);
@@ -197,9 +251,30 @@ class NSPanelCompanionPanel extends HTMLElement {
         const items = await this.call({ type: "nspanel_companion/scrypted/doorbells", bridge_id: bridge.id });
         this.scryptedDoorbells.push(...items.map((item) => ({ ...item, bridge_id: bridge.id })));
       }
+      this.workspaceTab = tab;
       this.editor = { panel, layout: layout || DEFAULT_LAYOUT(`panel-${Date.now()}`) };
+      if (updateRoute) history.pushState(null, "", this.workspaceRoute(panelId, tab));
     } catch (error) { this.error = error?.message || "Unable to open editor"; }
     finally { this.busy = false; this.render(); }
+  }
+
+  async renamePanel(form) {
+    const name = String(new FormData(form).get("panel_name") || "").trim();
+    if (!name || !this.editor) return;
+    this.busy = true; this.error = "";
+    try {
+      const panel = await this.call({
+        type: "nspanel_companion/panels/rename",
+        panel_id: this.editor.panel.panel_id,
+        name,
+      });
+      this.editor.panel = panel;
+      this.panels = this.panels.map((item) => item.panel_id === panel.panel_id ? panel : item);
+      this.render();
+    } catch (error) {
+      this.error = error?.message || "Unable to rename panel";
+      this.render();
+    } finally { this.busy = false; this.render(); }
   }
 
   async saveEditor(form) {
@@ -382,12 +457,17 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.shadowRoot.querySelector("#download-token")?.addEventListener("click", () => this.downloadToken());
     this.shadowRoot.querySelector("#close-token")?.addEventListener("click", () => { this.token = null; this.render(); });
     this.shadowRoot.querySelectorAll("[data-close-editor]").forEach((button) =>
-      button.addEventListener("click", () => { this.editor = null; this.render(); }));
+      button.addEventListener("click", () => this.closeWorkspace()));
+    this.shadowRoot.querySelectorAll("[data-workspace-tab]").forEach((button) =>
+      button.addEventListener("click", () => this.selectWorkspaceTab(button.dataset.workspaceTab)));
+    this.shadowRoot.querySelector("#panel-general")?.addEventListener("submit", (event) => {
+      event.preventDefault(); this.renamePanel(event.currentTarget);
+    });
     this.shadowRoot.querySelector("#layout-editor")?.addEventListener("submit", (event) => {
       event.preventDefault(); this.saveEditor(event.currentTarget);
     });
     this.shadowRoot.querySelectorAll("[data-edit]").forEach((button) =>
-      button.addEventListener("click", () => this.editPanel(button.dataset.edit)));
+      button.addEventListener("click", () => this.editPanel(button.dataset.edit, "general")));
     this.shadowRoot.querySelectorAll("[data-test-doorbell]").forEach((button) =>
       button.addEventListener("click", () => this.testDoorbell(button.dataset.testDoorbell)));
     this.shadowRoot.querySelectorAll("[data-diagnostics]").forEach((button) =>
@@ -482,9 +562,23 @@ class NSPanelCompanionPanel extends HTMLElement {
     const selectedScrypted = doorbell.scrypted_bridge_id && doorbell.scrypted_doorbell_id
       ? `${doorbell.scrypted_bridge_id}|${doorbell.scrypted_doorbell_id}` : "";
     const online = !panel.revoked && panel.last_seen && Date.now() - new Date(panel.last_seen).getTime() < 45000;
-    return `<div class="scrim"><section class="dialog editor"><div class="editor-head"><div><span class="eyebrow">Panel management</span><h2>${escapeHtml(panel.name)}</h2><p class="device-id">${escapeHtml(panel.device_id)}</p></div><span class="status ${online ? "online" : "waiting"}">${panel.revoked ? "Revoked" : online ? "Online" : "Offline"}</span><button data-close-editor>Close</button></div>${this.error ? `<div class="notice error">${escapeHtml(this.error)}</div>` : ""}
-      <form id="layout-editor">
-        <div class="editor-grid">
+    const tab = this.workspaceTab;
+    return `<div class="scrim"><section class="dialog editor workspace"><div class="editor-head"><div><span class="eyebrow">Panel workspace</span><h2>${escapeHtml(panel.name)}</h2><p class="device-id">${escapeHtml(panel.device_id)}</p></div><span class="status ${online ? "online" : "waiting"}">${panel.revoked ? "Revoked" : online ? "Online" : "Offline"}</span><button data-close-editor>Close</button></div>${this.error ? `<div class="notice error">${escapeHtml(this.error)}</div>` : ""}
+      <nav class="workspace-tabs" aria-label="Panel configuration">
+        ${[["general","General"],["pages","Pages"],["doorbell","Doorbell"],["diagnostics","Diagnostics"],["advanced","Advanced"]].map(([id,label]) => `<button type="button" data-workspace-tab="${id}" class="${tab === id ? "active" : ""}">${label}</button>`).join("")}
+      </nav>
+      <section class="workspace-panel" data-workspace-panel="general" ${tab === "general" ? "" : "hidden"}>
+        <div class="workspace-intro"><h3>Panel identity</h3><p>Give this panel a name that describes its room or purpose. Its stable device ID never changes.</p></div>
+        <form id="panel-general" class="settings-card">
+          <label>Panel name<input name="panel_name" maxlength="64" required value="${escapeHtml(panel.name)}" placeholder="Living room"></label>
+          <label>Stable device ID<input value="${escapeHtml(panel.device_id)}" readonly></label>
+          <dl><div><dt>Connection</dt><dd>${panel.revoked ? "Revoked" : online ? "Online" : "Offline"}</dd></div><div><dt>Registered</dt><dd>${formatDate(panel.created_at)}</dd></div><div><dt>App version</dt><dd>${escapeHtml(panel.app_version || "—")}</dd></div></dl>
+          <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save name</button></div>
+        </form>
+      </section>
+      <form id="layout-editor" class="workspace-layout-form">
+        <section class="workspace-panel" data-workspace-panel="pages" ${tab === "pages" ? "" : "hidden"}>
+          <div class="workspace-intro"><h3>Pages</h3><p>Configure the current native dashboard. The full visual page builder will replace these MVP selectors next.</p></div>
           <fieldset><legend>Dashboard</legend>
             <label>Climate entity<select name="climate_entity">${this.entityOptions(["climate"], climate, "No thermostat page")}</select></label>
             <label>Weather entity<select name="weather_entity">${this.entityOptions(["weather"], weather, "No weather page")}</select></label>
@@ -492,7 +586,14 @@ class NSPanelCompanionPanel extends HTMLElement {
             <label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label>
             <small>Off by default. When disabled, the panel follows its Android display timeout and automatic brightness settings.</small>
           </fieldset>
-          <fieldset><legend>Doorbell</legend>
+          <fieldset><legend>Controls <small>Select up to 12 entities</small></legend><div class="entity-list">
+            ${controlStates.map((item) => `<label class="entity-check"><input type="checkbox" name="control_entity" value="${escapeHtml(item.entity_id)}" ${selectedControls.has(item.entity_id) ? "checked" : ""}><span><b>${escapeHtml(item.attributes?.friendly_name || item.entity_id)}</b><small>${escapeHtml(item.entity_id)}</small></span></label>`).join("") || `<p>No compatible controls found.</p>`}
+          </div></fieldset>
+          <div class="actions"><button data-close-editor type="button">Cancel</button><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Publish to panel</button></div>
+        </section>
+        <section class="workspace-panel" data-workspace-panel="doorbell" ${tab === "doorbell" ? "" : "hidden"}>
+          <div class="workspace-intro"><h3>Doorbell</h3><p>Choose the visitor trigger, video source, and intercom behavior for this panel.</p></div>
+          <fieldset><legend>Doorbell configuration</legend>
             <label class="check"><input name="doorbell_enabled" type="checkbox" ${doorbell.enabled ? "checked" : ""}> Open this panel on visitor event</label>
             <label>Visitor/button entity<select name="doorbell_trigger">${this.entityOptions(["binary_sensor"], doorbell.trigger_entity_id || "", "Select trigger entity")}</select></label>
             ${(this.scrypted.paired || []).length ? `<label>Scrypted doorbell<select name="scrypted_doorbell"><option value="">Manual configuration</option>${this.scryptedDoorbells.map((item) => { const value = `${item.bridge_id}|${item.id}`; return `<option value="${escapeHtml(value)}" ${value === selectedScrypted ? "selected" : ""}>${escapeHtml(item.name)}${item.intercom ? " · intercom" : ""}</option>`; }).join("")}</select><small>Selecting a device fills video and talkback credentials securely when you publish.</small></label>` : ""}
@@ -505,13 +606,17 @@ class NSPanelCompanionPanel extends HTMLElement {
             <label>Close after<input name="auto_close_seconds" type="number" min="10" max="300" value="${Number(doorbell.auto_close_ms || 60000) / 1000}"><small>10–300 seconds.</small></label>
             <label class="check"><input name="quiet_mode" type="checkbox" ${doorbell.quiet_mode ? "checked" : ""}> Start with incoming audio muted</label>
           </fieldset>
-        </div>
-        <fieldset><legend>Controls <small>Select up to 12 entities</small></legend><div class="entity-list">
-          ${controlStates.map((item) => `<label class="entity-check"><input type="checkbox" name="control_entity" value="${escapeHtml(item.entity_id)}" ${selectedControls.has(item.entity_id) ? "checked" : ""}><span><b>${escapeHtml(item.attributes?.friendly_name || item.entity_id)}</b><small>${escapeHtml(item.entity_id)}</small></span></label>`).join("") || `<p>No compatible controls found.</p>`}
-        </div></fieldset>
-        <fieldset class="panel-tools"><legend>Panel tools</legend><p>Test and troubleshoot this panel without leaving its configuration.</p><div class="actions"><button data-test-doorbell="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Test doorbell</button><button data-diagnostics="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Download diagnostics</button><button class="danger" data-revoke="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Remove & unpair</button></div></fieldset>
-        <div class="actions"><button data-close-editor type="button">Cancel</button><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Publish to panel</button></div>
+          <div class="actions"><button data-test-doorbell="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Test doorbell</button><button data-close-editor type="button">Cancel</button><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Publish to panel</button></div>
+        </section>
       </form>
+      <section class="workspace-panel" data-workspace-panel="diagnostics" ${tab === "diagnostics" ? "" : "hidden"}>
+        <div class="workspace-intro"><h3>Diagnostics</h3><p>Download the latest bounded, sanitized health report uploaded by this panel.</p></div>
+        <div class="settings-card"><dl><div><dt>Last seen</dt><dd>${formatDate(panel.last_seen)}</dd></div><div><dt>Reported layout</dt><dd>${escapeHtml(panel.reported_layout_revision || "—")}</dd></div></dl><div class="actions left"><button data-diagnostics="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Download diagnostics</button></div></div>
+      </section>
+      <section class="workspace-panel" data-workspace-panel="advanced" ${tab === "advanced" ? "" : "hidden"}>
+        <div class="workspace-intro"><h3>Advanced</h3><p>Destructive panel management actions live here to keep everyday configuration safe.</p></div>
+        <div class="settings-card danger-zone"><h3>Remove this panel</h3><p>Unpairs the app, erases its saved HA credentials, and removes this panel from Home Assistant.</p><div class="actions left"><button class="danger" data-revoke="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Remove & unpair</button></div></div>
+      </section>
     </section></div>`;
   }
 }
@@ -532,7 +637,8 @@ const STYLES = `
   .scrim{position:fixed;inset:0;background:#0008;display:grid;place-items:center;padding:20px;z-index:10}.dialog{width:min(560px,100%);max-height:90vh;overflow:auto;background:var(--card-background-color,#fff);border-radius:24px;padding:26px;box-shadow:0 20px 70px #0005}.success-mark{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:#dff7eb;color:#147a4d;font-size:25px;margin-bottom:15px}.token{display:flex;gap:8px;margin-top:7px}.token code{flex:1;min-width:0;overflow:auto;background:var(--secondary-background-color,#f4f4f1);padding:13px;border-radius:10px;font-size:12px}.details pre{max-height:260px;overflow:auto;background:var(--secondary-background-color,#f4f4f1);padding:14px;border-radius:12px;font-size:11px}
   .finder-list{display:grid;gap:10px;margin-top:18px}.finder-panel{display:grid;grid-template-columns:42px 1fr auto;align-items:center;text-align:left;gap:12px;width:100%;padding:13px}.finder-panel span:nth-child(2){min-width:0}.finder-panel b,.finder-panel small{display:block}.finder-panel small,.device-id{font-family:monospace;overflow-wrap:anywhere}.pairing-dialog{width:min(620px,100%);padding:30px}.pairing-dialog-head{display:flex;align-items:center;gap:20px;margin-bottom:28px}.pairing-dialog-head .eyebrow{display:block}.pairing-dialog-body h2{font-size:30px;margin:0 0 10px}.pairing-dialog-body .device-id{margin:0 0 18px}.pairing-help{margin:0 0 28px}.pairing-form{margin:0}.pairing-entry{display:block;width:min(100%,380px);font-size:30px;letter-spacing:.18em;text-align:center;margin:0;padding:18px 20px}.pairing-actions{margin-top:34px;gap:12px}.pairing-actions button{min-width:120px;padding:14px 20px}
   .editor{width:min(980px,100%)}.editor-head{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:start;margin-bottom:18px}.editor-head .device-id{margin-top:5px}.editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}fieldset{border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:16px;margin:0 0 16px}legend{font-size:16px;font-weight:800;padding:0 7px}select{width:100%;margin-top:6px;border:1px solid var(--divider-color,#d8dad6);border-radius:11px;background:var(--secondary-background-color,#f7f7f5);color:inherit;padding:12px;font:inherit}.check{display:flex;gap:9px;align-items:center}.check input,.entity-check input{width:auto;margin:0}.entity-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:280px;overflow:auto}.entity-check{display:flex;align-items:center;gap:10px;margin:0;padding:10px;border:1px solid var(--divider-color,#ddd);border-radius:11px}.entity-check span{min-width:0}.entity-check b,.entity-check small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entity-check small{margin:2px 0 0;font-family:monospace}.panel-tools{background:var(--secondary-background-color,#f7f7f5)}.panel-tools .actions{justify-content:flex-start}
-  :host([narrow]) main{padding:18px}:host([narrow]) .cards{grid-template-columns:1fr}@media(max-width:720px){main{padding:18px}.editor-grid{grid-template-columns:1fr}.entity-list{grid-template-columns:1fr}.cards{grid-template-columns:1fr}.section-title{align-items:flex-start}.panel-card{min-height:175px}.panel-card>.actions{justify-content:stretch}.panel-card>.actions button{width:100%}.panel-head{grid-template-columns:42px minmax(0,1fr) auto}.device-icon{width:42px;height:42px}.editor-head{grid-template-columns:1fr auto}.editor-head .status{grid-column:1}.pairing{grid-template-columns:1fr auto}.pairing .expires{grid-column:1}.pairing button{grid-column:2;grid-row:2}}
+  .workspace{padding:0;overflow:hidden}.workspace .editor-head{padding:24px 26px 18px;margin:0}.workspace-tabs{display:flex;gap:4px;padding:0 26px;border-bottom:1px solid var(--divider-color,#ddd);overflow-x:auto}.workspace-tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;color:var(--secondary-text-color,#777);padding:13px 15px;white-space:nowrap}.workspace-tabs button.active{color:var(--primary-text-color,#171916);border-bottom-color:#f36d21}.workspace-panel{padding:24px 26px;max-height:calc(90vh - 165px);overflow:auto}.workspace-panel[hidden]{display:none}.workspace-intro{margin-bottom:18px}.workspace-intro h3{font-size:20px}.workspace-layout-form{margin:0}.settings-card{max-width:680px;border:1px solid var(--divider-color,#ddd);border-radius:16px;padding:18px;margin:0}.settings-card input[readonly]{font-family:monospace;color:var(--secondary-text-color,#777)}.danger-zone{border-color:#d79a95;background:color-mix(in srgb,var(--card-background-color,#fff) 92%,#b3261e)}.left{justify-content:flex-start}
+  :host([narrow]) main{padding:18px}:host([narrow]) .cards{grid-template-columns:1fr}@media(max-width:720px){main{padding:18px}.editor-grid{grid-template-columns:1fr}.entity-list{grid-template-columns:1fr}.cards{grid-template-columns:1fr}.section-title{align-items:flex-start}.panel-card{min-height:175px}.panel-card>.actions{justify-content:stretch}.panel-card>.actions button{width:100%}.panel-head{grid-template-columns:42px minmax(0,1fr) auto}.device-icon{width:42px;height:42px}.editor-head{grid-template-columns:1fr auto}.editor-head .status{grid-column:1}.pairing{grid-template-columns:1fr auto}.pairing .expires{grid-column:1}.pairing button{grid-column:2;grid-row:2}.workspace .editor-head{padding:20px}.workspace-tabs{padding:0 12px}.workspace-panel{padding:20px}.workspace-tabs button{padding:12px 11px}}
 `;
 
 if (!customElements.get("ha-panel-nspanel-companion-panel")) {

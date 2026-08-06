@@ -14,6 +14,7 @@ class FrontendContractTest(unittest.TestCase):
         for command in (
             "nspanel_companion/panels/list",
             "nspanel_companion/panels/register",
+            "nspanel_companion/panels/rename",
             "nspanel_companion/layout/get",
             "nspanel_companion/layout/set",
             "nspanel_companion/doorbell/test",
@@ -36,7 +37,9 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("Publish default", source)
         self.assertNotIn("Rotate token", source)
         self.assertNotIn("<dt>Layout</dt>", source)
-        self.assertIn("<legend>Panel tools</legend>", source)
+        self.assertIn('["general","General"]', source)
+        self.assertIn('data-workspace-panel="diagnostics"', source)
+        self.assertIn("workspaceRoute", source)
         self.assertIn('customElements.define("ha-panel-nspanel-companion-panel"', source)
         self.assertIn("customElements.define", source)
 
@@ -47,7 +50,7 @@ class FrontendContractTest(unittest.TestCase):
 
     def test_admin_websocket_commands_use_current_ha_decorator(self):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
-        self.assertEqual(18, source.count("@websocket_api.require_admin"))
+        self.assertEqual(19, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
 
 
