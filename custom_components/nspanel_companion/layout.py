@@ -106,6 +106,10 @@ def validate_layout(value: Any) -> dict[str, Any]:
         auto_close_ms = int(doorbell.get("auto_close_ms", 60000))
         if not 10000 <= auto_close_ms <= 300000:
             raise ValueError("Doorbell timeout must be 10–300 seconds")
+        talk_extend_enabled = bool(doorbell.get("talk_extend_enabled", True))
+        talk_extend_ms = int(doorbell.get("talk_extend_ms", 15000))
+        if not 5000 <= talk_extend_ms <= 60000:
+            raise ValueError("Talk extension must be 5–60 seconds")
         normalized["doorbell"] = {
             "enabled": bool(doorbell.get("enabled", True)),
             "trigger_entity_id": trigger_entity_id,
@@ -117,6 +121,8 @@ def validate_layout(value: Any) -> dict[str, Any]:
             "scrypted_doorbell_id": scrypted_doorbell_id,
             "quiet_mode": bool(doorbell.get("quiet_mode", False)),
             "auto_close_ms": auto_close_ms,
+            "talk_extend_enabled": talk_extend_enabled,
+            "talk_extend_ms": talk_extend_ms,
         }
     normalized["default_page_id"] = default_page
     normalized["default_page_return_seconds"] = return_seconds

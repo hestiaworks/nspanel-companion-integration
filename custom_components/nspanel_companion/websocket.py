@@ -299,6 +299,7 @@ async def ws_test_doorbell(hass, connection, msg) -> None:
             "talkback_key": doorbell.get("talkback_key", ""),
             "quiet_mode": doorbell.get("quiet_mode", False),
             "auto_close_ms": doorbell.get("auto_close_ms", 60000),
+            "talk_extend_ms": doorbell.get("talk_extend_ms", 15000) if doorbell.get("talk_extend_enabled", True) else 0,
             "test": True,
         })
         connection.send_result(msg["id"], {"sent": True, "panel_id": panel_id})
