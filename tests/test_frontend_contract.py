@@ -73,6 +73,17 @@ class FrontendContractTest(unittest.TestCase):
         source = (ROOT / "custom_components/nspanel_companion/http.py").read_text()
         self.assertIn('"panel_name": record.get("name")', source)
 
+    def test_panel_asset_version_matches_the_manifest(self):
+        """A stale query string serves the cached panel after a HACS update.
+
+        HACS offers the update from the manifest version, so if the asset URL
+        does not move with it the browser keeps the old panel and the upgrade
+        looks like it silently did nothing.
+        """
+        manifest = json.loads((ROOT / "custom_components/nspanel_companion/manifest.json").read_text())
+        const_source = (ROOT / "custom_components/nspanel_companion/const.py").read_text()
+        self.assertIn(f"?v={manifest['version']}\"", const_source)
+
 
 if __name__ == "__main__":
     unittest.main()

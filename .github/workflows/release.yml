@@ -1,0 +1,39 @@
+name: Publish release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # HACS offers updates by release tag but installs the code from it, so a
+      # tag that disagrees with the manifest would report a version the running
+      # integration does not have.
+      - name: Verify the tag matches the manifest version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          MANIFEST_VERSION="$(python3 -c "import json;print(json.load(open('custom_components/nspanel_companion/manifest.json'))['version'])")"
+          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match manifest version $MANIFEST_VERSION" >&2
+            exit 1
+          fi
+      - name: Test before publishing
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          node --check custom_components/nspanel_companion/frontend/nspanel-companion-panel.js
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=""
+          case "${GITHUB_REF_NAME#v}" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag $PRERELEASE
