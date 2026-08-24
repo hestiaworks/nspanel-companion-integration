@@ -6,6 +6,7 @@
   "documentation": "https://github.com/hestiaworks/nspanel-companion-integration",
   "issue_tracker": "https://github.com/hestiaworks/nspanel-companion-integration/issues",
   "dependencies": ["frontend", "http", "zeroconf"],
+  "requirements": [],
   "iot_class": "local_push",
   "version": "0.30.1"
 }
