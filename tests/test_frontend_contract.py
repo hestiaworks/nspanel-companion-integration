@@ -62,6 +62,13 @@ class FrontendContractTest(unittest.TestCase):
         self.assertTrue(manifest["config_flow"])
         self.assertEqual(["frontend", "http", "zeroconf"], manifest["dependencies"])
 
+    def test_manifest_carries_the_keys_hassfest_requires(self):
+        """hassfest rejects a manifest without these, and HACS surfaces both links."""
+        manifest = json.loads((ROOT / "custom_components/nspanel_companion/manifest.json").read_text())
+        repository = "https://github.com/hestiaworks/nspanel-companion-integration"
+        self.assertEqual(repository, manifest["documentation"])
+        self.assertEqual(f"{repository}/issues", manifest["issue_tracker"])
+
     def test_admin_websocket_commands_use_current_ha_decorator(self):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
         self.assertEqual(24, source.count("@websocket_api.require_admin"))
