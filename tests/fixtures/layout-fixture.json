@@ -1,0 +1,1104 @@
+{
+  "fixture_version": 1,
+  "schema_version": 1,
+  "description": "Shared contract for the dashboard layout. The integration validator and the panel parser are tested against this same file so the two cannot drift apart unnoticed.",
+  "categories": {
+    "valid": "Both the integration and the panel must accept these.",
+    "invalid": "Both must reject these.",
+    "publisher_only_invalid": "The integration must reject these; the panel is more lenient and may accept them. Home Assistant is the gatekeeper, so rejecting later than it does is safe. The panel is not tested against this category."
+  },
+  "valid": [
+    {
+      "name": "minimal single empty page",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "every supported widget type",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "thermostat",
+                "entity_id": "climate.living"
+              },
+              {
+                "type": "weather",
+                "entity_id": "weather.home",
+                "forecast_days": 3,
+                "show_hourly": false
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.temp"
+              },
+              {
+                "type": "camera",
+                "entity_id": "camera.door",
+                "tap_action": "intercom",
+                "incoming_audio": true,
+                "stream_base_url": "https://192.0.2.20:1984"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "weather forecast lengths",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "d1",
+            "widgets": [
+              {
+                "type": "weather",
+                "forecast_days": 1
+              }
+            ]
+          },
+          {
+            "id": "d3",
+            "widgets": [
+              {
+                "type": "weather",
+                "forecast_days": 3
+              }
+            ]
+          },
+          {
+            "id": "d5",
+            "widgets": [
+              {
+                "type": "weather",
+                "forecast_days": 5
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "entity button with every option",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "entity_button",
+                "entity_id": "cover.blind",
+                "icon": "blinds",
+                "show_timer": true,
+                "show_schedule": false,
+                "card_tap": true,
+                "show_fan_speed": false,
+                "timer_presets": [
+                  5,
+                  15,
+                  30,
+                  60
+                ],
+                "gradual_open_script": "script.open_slowly",
+                "gradual_close_script": "script.close_slowly"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "four controls on one page",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "entity_button",
+                "entity_id": "switch.s0",
+                "icon": "switch"
+              },
+              {
+                "type": "entity_button",
+                "entity_id": "switch.s1",
+                "icon": "switch"
+              },
+              {
+                "type": "entity_button",
+                "entity_id": "switch.s2",
+                "icon": "switch"
+              },
+              {
+                "type": "entity_button",
+                "entity_id": "switch.s3",
+                "icon": "switch"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "twelve non-control widgets",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s0"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s1"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s2"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s3"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s4"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s5"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s6"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s7"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s8"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s9"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s10"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s11"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "maximum eight pages",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "p0",
+            "widgets": []
+          },
+          {
+            "id": "p1",
+            "widgets": []
+          },
+          {
+            "id": "p2",
+            "widgets": []
+          },
+          {
+            "id": "p3",
+            "widgets": []
+          },
+          {
+            "id": "p4",
+            "widgets": []
+          },
+          {
+            "id": "p5",
+            "widgets": []
+          },
+          {
+            "id": "p6",
+            "widgets": []
+          },
+          {
+            "id": "p7",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "camera url schemes",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "a",
+            "widgets": [
+              {
+                "type": "camera",
+                "stream_base_url": "http://192.0.2.20:1984"
+              }
+            ]
+          },
+          {
+            "id": "b",
+            "widgets": [
+              {
+                "type": "camera",
+                "stream_base_url": "https://192.0.2.20:1984"
+              }
+            ]
+          },
+          {
+            "id": "c",
+            "widgets": [
+              {
+                "type": "camera",
+                "stream_base_url": "rtsp://192.0.2.20:8554"
+              }
+            ]
+          },
+          {
+            "id": "d",
+            "widgets": [
+              {
+                "type": "camera",
+                "stream_base_url": "rtsps://192.0.2.20:8554"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "camera tap actions",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "n",
+            "widgets": [
+              {
+                "type": "camera",
+                "tap_action": "none"
+              }
+            ]
+          },
+          {
+            "id": "f",
+            "widgets": [
+              {
+                "type": "camera",
+                "tap_action": "fullscreen"
+              }
+            ]
+          },
+          {
+            "id": "i",
+            "widgets": [
+              {
+                "type": "camera",
+                "tap_action": "intercom"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "theme modes",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "l",
+            "widgets": []
+          }
+        ],
+        "theme_mode": "light"
+      }
+    },
+    {
+      "name": "theme mode dark",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "d",
+            "widgets": []
+          }
+        ],
+        "theme_mode": "dark"
+      }
+    },
+    {
+      "name": "theme mode inherit",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "i",
+            "widgets": []
+          }
+        ],
+        "theme_mode": "inherit"
+      }
+    },
+    {
+      "name": "numeric lower bounds",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ],
+        "default_page_return_seconds": 0,
+        "weather_cache_max_age_minutes": 0,
+        "mic_indicator_linger_seconds": 0
+      }
+    },
+    {
+      "name": "numeric upper bounds",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ],
+        "default_page_return_seconds": 3600,
+        "weather_cache_max_age_minutes": 10080,
+        "mic_indicator_linger_seconds": 60
+      }
+    },
+    {
+      "name": "title and label at the 48 character limit",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "title": "tttttttttttttttttttttttttttttttttttttttttttttttt",
+            "widgets": [
+              {
+                "type": "sensor",
+                "entity_id": "sensor.a",
+                "label": "llllllllllllllllllllllllllllllllllllllllllllllll"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "explicit default page",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "one",
+            "widgets": []
+          },
+          {
+            "id": "two",
+            "widgets": []
+          }
+        ],
+        "default_page_id": "two"
+      }
+    },
+    {
+      "name": "revision at 64 characters",
+      "layout": {
+        "schema_version": 1,
+        "revision": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "timer preset bounds",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "entity_button",
+                "entity_id": "switch.a",
+                "timer_presets": [
+                  1
+                ]
+              },
+              {
+                "type": "entity_button",
+                "entity_id": "switch.b",
+                "timer_presets": [
+                  1,
+                  2,
+                  3,
+                  1440
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "unsupported schema version",
+      "layout": {
+        "schema_version": 2,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing revision",
+      "layout": {
+        "schema_version": 1,
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "blank revision",
+      "layout": {
+        "schema_version": 1,
+        "revision": "   ",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "revision too long",
+      "layout": {
+        "schema_version": 1,
+        "revision": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "no pages",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": []
+      }
+    },
+    {
+      "name": "nine pages",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "p0",
+            "widgets": []
+          },
+          {
+            "id": "p1",
+            "widgets": []
+          },
+          {
+            "id": "p2",
+            "widgets": []
+          },
+          {
+            "id": "p3",
+            "widgets": []
+          },
+          {
+            "id": "p4",
+            "widgets": []
+          },
+          {
+            "id": "p5",
+            "widgets": []
+          },
+          {
+            "id": "p6",
+            "widgets": []
+          },
+          {
+            "id": "p7",
+            "widgets": []
+          },
+          {
+            "id": "p8",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate page ids",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "same",
+            "widgets": []
+          },
+          {
+            "id": "same",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "page id with illegal characters",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "bad id!",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "page id too long",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "ppppppppppppppppppppppppppppppppp",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "thirteen widgets",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s0"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s1"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s2"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s3"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s4"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s5"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s6"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s7"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s8"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s9"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s10"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s11"
+              },
+              {
+                "type": "sensor",
+                "entity_id": "sensor.s12"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "five controls on one page",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "entity_button",
+                "entity_id": "switch.s0",
+                "icon": "switch"
+              },
+              {
+                "type": "entity_button",
+                "entity_id": "switch.s1",
+                "icon": "switch"
+              },
+              {
+                "type": "entity_button",
+                "entity_id": "switch.s2",
+                "icon": "switch"
+              },
+              {
+                "type": "entity_button",
+                "entity_id": "switch.s3",
+                "icon": "switch"
+              },
+              {
+                "type": "entity_button",
+                "entity_id": "switch.s4",
+                "icon": "switch"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "unsupported widget type",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "carousel"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "malformed entity id",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "sensor",
+                "entity_id": "NotAnEntity"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "weather forecast of four days",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "weather",
+                "forecast_days": 4
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown control icon",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "entity_button",
+                "entity_id": "switch.a",
+                "icon": "unicorn"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty timer presets",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "entity_button",
+                "entity_id": "switch.a",
+                "timer_presets": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "five timer presets",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "entity_button",
+                "entity_id": "switch.a",
+                "timer_presets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "timer preset below range",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "entity_button",
+                "entity_id": "switch.a",
+                "timer_presets": [
+                  0
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "timer preset above range",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "entity_button",
+                "entity_id": "switch.a",
+                "timer_presets": [
+                  1441
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "camera tap action unknown",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "camera",
+                "tap_action": "explode"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "camera stream url scheme unsupported",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "camera",
+                "stream_base_url": "ftp://192.0.2.20"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "default page does not exist",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "one",
+            "widgets": []
+          }
+        ],
+        "default_page_id": "missing"
+      }
+    },
+    {
+      "name": "return seconds above range",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ],
+        "default_page_return_seconds": 3601
+      }
+    },
+    {
+      "name": "weather cache above range",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ],
+        "weather_cache_max_age_minutes": 10081
+      }
+    },
+    {
+      "name": "mic linger above range",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ],
+        "mic_indicator_linger_seconds": 61
+      }
+    },
+    {
+      "name": "unknown theme mode",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": []
+          }
+        ],
+        "theme_mode": "sepia"
+      }
+    },
+    {
+      "name": "page title above 48 characters",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "title": "ttttttttttttttttttttttttttttttttttttttttttttttttt",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "widget label above 48 characters",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "sensor",
+                "entity_id": "sensor.a",
+                "label": "lllllllllllllllllllllllllllllllllllllllllllllllll"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "publisher_only_invalid": [
+    {
+      "name": "page id padded with spaces",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": " main ",
+            "widgets": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty entity id string",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "sensor",
+                "entity_id": ""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "gradual script that is not a script entity",
+      "layout": {
+        "schema_version": 1,
+        "revision": "fixture",
+        "pages": [
+          {
+            "id": "main",
+            "widgets": [
+              {
+                "type": "entity_button",
+                "entity_id": "cover.a",
+                "gradual_open_script": "switch.nope"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

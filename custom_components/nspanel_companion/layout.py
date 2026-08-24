@@ -23,6 +23,8 @@ CONTROL_ICONS = {
 PAGE_ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 ENTITY_ID = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 STREAM_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+# Mirrors DashboardPage/DashboardWidget on the panel, which reject anything longer.
+MAX_TITLE_LENGTH = 48
 
 
 def validate_layout(value: Any) -> dict[str, Any]:
@@ -43,6 +45,10 @@ def validate_layout(value: Any) -> dict[str, Any]:
             raise ValueError("Invalid page ID")
         page_id = str(page["id"])
         ids.append(page_id)
+        # The panel refuses a title or label longer than this, so publishing one
+        # would hand the panel a layout it cannot parse.
+        if len(str(page.get("title", "")).strip()) > MAX_TITLE_LENGTH:
+            raise ValueError("Page title is too long")
         widgets = page.get("widgets", [])
         if not isinstance(widgets, list) or len(widgets) > 12:
             raise ValueError("A page may contain at most 12 widgets")
@@ -54,6 +60,8 @@ def validate_layout(value: Any) -> dict[str, Any]:
             entity_id = widget.get("entity_id")
             if entity_id is not None and not ENTITY_ID.fullmatch(str(entity_id)):
                 raise ValueError("Invalid entity ID")
+            if len(str(widget.get("label", "")).strip()) > MAX_TITLE_LENGTH:
+                raise ValueError("Widget label is too long")
             if widget.get("type") == "weather":
                 forecast_days = int(widget.get("forecast_days", 5))
                 if forecast_days not in {1, 3, 5}:
