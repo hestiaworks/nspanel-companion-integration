@@ -32,6 +32,7 @@ class FrontendContractTest(unittest.TestCase):
             "nspanel_companion/panels/discovery/connect",
             "nspanel_companion/updater/status",
             "nspanel_companion/updater/pair",
+            "nspanel_companion/updater/autopair",
             "nspanel_companion/updater/unpair",
             "nspanel_companion/updater/discover",
             "nspanel_companion/updater/update",
@@ -82,7 +83,7 @@ class FrontendContractTest(unittest.TestCase):
 
     def test_admin_websocket_commands_use_current_ha_decorator(self):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
-        self.assertEqual(24, source.count("@websocket_api.require_admin"))
+        self.assertEqual(25, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
         self.assertIn('{"nspanel-companion", "probable-nspanel"}', source)
         self.assertIn('device.get("adb_state") == "device"', source)

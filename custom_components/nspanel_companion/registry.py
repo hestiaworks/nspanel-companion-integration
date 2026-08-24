@@ -17,6 +17,9 @@ from .const import DOMAIN, STORAGE_KEY, STORAGE_VERSION
 from .layout import validate_layout
 
 DEVICE_ID = re.compile(r"^[A-Za-z0-9._:-]{4,128}$")
+# The add-on discloses its pairing code to this host only, so these are the only
+# addresses that can answer. An updater running elsewhere is paired by hand.
+LOOPBACK_UPDATER_URLS = ("http://127.0.0.1:8098", "http://localhost:8098")
 SENSITIVE_DIAGNOSTIC = re.compile(
     r"(?i)(?:bearer\s+\S+|(?:https?|rtsp|wss?)://\S+|(?:token|password|access[_ -]?key|claim)\s*[:=]\s*\S+)"
 )
@@ -92,6 +95,29 @@ class PanelRegistry:
         }
         await self._save()
         return self.updater_public() or {}
+
+    async def async_autopair_updater(self) -> dict[str, Any]:
+        """Pair with an updater add-on running alongside Home Assistant.
+
+        The code is readable only from this host, so reaching it at all is what
+        establishes that the add-on is the local one.
+        """
+        session = async_get_clientsession(self._hass)
+        for base_url in LOOPBACK_UPDATER_URLS:
+            try:
+                async with session.get(f"{base_url}/api/pair-code", timeout=10) as response:
+                    if response.status != 200:
+                        continue
+                    payload = await response.json()
+            except Exception:  # noqa: BLE001 - any failure means try the next address
+                continue
+            code = str(payload.get("code") or "").strip()
+            if code:
+                return await self.async_pair_updater(base_url, code)
+        raise ValueError(
+            "The updater add-on could not be reached on this host. If it runs "
+            "elsewhere, pair it manually with its address and pairing code."
+        )
 
     async def async_updater_request(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not self._updater:

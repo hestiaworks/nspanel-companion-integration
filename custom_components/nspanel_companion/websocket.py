@@ -174,6 +174,17 @@ async def ws_pair_updater(hass, connection, msg) -> None:
 
 @websocket_api.require_admin
 @websocket_api.async_response
+@websocket_api.websocket_command({vol.Required("type"): "nspanel_companion/updater/autopair"})
+async def ws_autopair_updater(hass, connection, msg) -> None:
+    """Pair an updater add-on running on this host, without a copied code."""
+    try:
+        connection.send_result(msg["id"], await _registry(hass).async_autopair_updater())
+    except ValueError as err:
+        connection.send_error(msg["id"], "updater_pairing_failed", str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
 @websocket_api.websocket_command({vol.Required("type"): "nspanel_companion/updater/unpair"})
 async def ws_unpair_updater(hass, connection, msg) -> None:
     try:
@@ -457,6 +468,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_set_panel_discovery)
     websocket_api.async_register_command(hass, ws_connect_discovered_panel)
     websocket_api.async_register_command(hass, ws_updater_status)
+    websocket_api.async_register_command(hass, ws_autopair_updater)
     websocket_api.async_register_command(hass, ws_pair_updater)
     websocket_api.async_register_command(hass, ws_unpair_updater)
     websocket_api.async_register_command(hass, ws_updater_discover)
