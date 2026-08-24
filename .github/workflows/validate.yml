@@ -21,3 +21,27 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_*.py'
           node --check custom_components/nspanel_companion/frontend/nspanel-companion-panel.js
           for f in tools/*.js; do node --check "$f"; done
+
+  hassfest:
+    name: Home Assistant manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Validates the manifest the way Home Assistant itself does: dependency
+      # names, iot_class, version format. A manifest error otherwise appears as
+      # an integration that silently fails to set up on the user's instance.
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # HACS applies these checks to what it downloads. Running them here means
+      # a repository problem fails on a commit rather than on a user's update.
+      # brands is ignored: that check requires the domain to be registered in
+      # home-assistant/brands, which is for core and default-store integrations.
+      - uses: hacs/action@main
+        with:
+          category: integration
+          ignore: brands
