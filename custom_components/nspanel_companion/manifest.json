@@ -1,12 +1,12 @@
 {
   "domain": "nspanel_companion",
   "name": "NSPanel Companion",
-  "codeowners": [],
+  "codeowners": ["@theseus-elysium"],
   "config_flow": true,
   "dependencies": ["frontend", "http", "zeroconf"],
   "documentation": "https://github.com/hestiaworks/nspanel-companion-integration",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/hestiaworks/nspanel-companion-integration/issues",
   "requirements": [],
-  "version": "0.31.1"
+  "version": "0.31.2"
 }
