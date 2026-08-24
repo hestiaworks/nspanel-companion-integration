@@ -210,6 +210,11 @@ class PanelRegistry:
         """Invalidate a Scrypted bridge credential on both sides."""
         bridge = self._require_bridge(bridge_id)
         session = async_get_clientsession(self._hass)
+        # Revoking on the Scrypted side is best effort. Refusing to unpair
+        # locally when Scrypted cannot be reached leaves a bridge at a stale
+        # address that can never be removed, which is worse than a credential
+        # the user can also clear by removing the plugin.
+        warning = ""
         try:
             async with session.post(
                 f"{bridge['base_url']}/api/unpair",
@@ -218,11 +223,14 @@ class PanelRegistry:
             ) as response:
                 payload = await response.json()
                 if response.status != 200:
-                    raise ValueError(payload.get("error", "Scrypted unpair failed"))
-        except ValueError:
-            raise
-        except Exception as err:
-            raise ValueError(f"Unable to reach Scrypted: {err}") from err
+                    warning = str(payload.get("error") or "Scrypted refused the unpair request")
+        except Exception as err:  # noqa: BLE001 - the local record is removed regardless
+            warning = f"Scrypted could not be reached ({err})"
+        if warning:
+            warning = (
+                f"{warning}. The bridge was removed here, but its access key may still "
+                "exist in Scrypted until the plugin is unpaired or removed there."
+            )
 
         self._scrypted_bridges.pop(bridge_id, None)
         cleared_panels: list[str] = []
@@ -251,7 +259,7 @@ class PanelRegistry:
                 record["layout_revision"] = normalized["revision"]
                 cleared_panels.append(panel_id)
         await self._save()
-        return {"unpaired": True, "cleared_panels": cleared_panels}
+        return {"unpaired": True, "cleared_panels": cleared_panels, "warning": warning}
 
     async def async_assign_scrypted_doorbell(
         self, panel_id: str, bridge_id: str, doorbell_id: str

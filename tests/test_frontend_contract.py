@@ -67,6 +67,20 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('source === "manual"', source)
         self.assertNotIn(">Pair updater<", source)
 
+    def test_removing_a_panel_clears_a_stale_error(self):
+        """Otherwise an earlier failure looks like the removal failing."""
+        source = SCRIPT.read_text()
+        start = source.index("async revokePanel(")
+        body = source[start:source.index("async ", start + 10)]
+        self.assertIn('this.error = ""', body)
+
+    def test_unpairing_surfaces_what_could_not_be_revoked(self):
+        """The bridge is removed locally even when Scrypted is unreachable."""
+        source = SCRIPT.read_text()
+        start = source.index("async unpairScrypted(")
+        body = source[start:source.index("async ", start + 10)]
+        self.assertIn("warning", body)
+
     def test_manifest_loads_frontend_dependencies(self):
         manifest = json.loads((ROOT / "custom_components/nspanel_companion/manifest.json").read_text())
         self.assertTrue(manifest["config_flow"])

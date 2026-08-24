@@ -285,7 +285,7 @@ class NSPanelCompanionPanel extends HTMLElement {
 
   async revokePanel(panelId) {
     if (!confirm("Remove and unpair this panel? It will erase its saved pairing and return to the setup screen.")) return;
-    this.busy = true; this.render();
+    this.busy = true; this.error = ""; this.render();
     try {
       await this.call({ type: "nspanel_companion/panels/revoke", panel_id: panelId });
       this.editor = null;
@@ -621,12 +621,15 @@ class NSPanelCompanionPanel extends HTMLElement {
     if (!confirm(message)) return;
     this.busy = true; this.error = ""; this.render();
     try {
-      await this.call({
+      const result = await this.call({
         type: "nspanel_companion/scrypted/unpair",
         bridge_id: bridgeId,
         clear_assignments: clearAssignments,
       });
       await this.loadPanels();
+      // The bridge is removed here even when Scrypted cannot be reached, so say
+      // what is left behind rather than reporting a plain success.
+      if (result?.warning) this.error = result.warning;
     } catch (error) { this.error = error?.message || "Unable to unpair Scrypted"; }
     finally { this.busy = false; this.render(); }
   }
