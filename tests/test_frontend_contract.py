@@ -58,6 +58,15 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("customElements.define", source)
         self.assertIn('["nspanel-companion", "probable-nspanel"].includes(device.classification)', source)
 
+    def test_updater_pairs_itself_and_hides_the_pairing_controls(self):
+        """Installing the add-on is the intent; a pair button re-asks for it."""
+        source = SCRIPT.read_text()
+        self.assertIn("Updater add-on connected", source)
+        self.assertIn("_autopairTried", source)
+        # Unpair is offered only where the panel cannot simply pair again.
+        self.assertIn('source === "manual"', source)
+        self.assertNotIn(">Pair updater<", source)
+
     def test_manifest_loads_frontend_dependencies(self):
         manifest = json.loads((ROOT / "custom_components/nspanel_companion/manifest.json").read_text())
         self.assertTrue(manifest["config_flow"])

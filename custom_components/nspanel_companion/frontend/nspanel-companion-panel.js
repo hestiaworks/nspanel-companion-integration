@@ -60,6 +60,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.passivePanelDiscovery = false;
     this.scrypted = { discovered: [], paired: [] };
     this.updater = { paired: null };
+    this._autopairTried = false;
     this.adbDevices = [];
     this.updaterMessage = "";
     this.scryptedDoorbells = [];
@@ -169,6 +170,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         this.call({ type: "nspanel_companion/updater/status" }),
       ]);
       this.loaded = true;
+      await this.autopairUpdater();
     } catch (error) {
       this.error = error?.message || "Unable to load panels";
     } finally {
@@ -644,15 +646,17 @@ class NSPanelCompanionPanel extends HTMLElement {
   }
 
   async autopairUpdater() {
-    this.busy = true; this.error = ""; this.updaterMessage = "Looking for the updater add-on on this host…"; this.render();
+    // Installing the add-on is the request; connecting to it does not need a
+    // second confirmation. Attempted once per session, and quietly: no add-on
+    // installed is the normal case, not an error worth showing.
+    if (this._autopairTried || this.updater?.paired) return;
+    this._autopairTried = true;
     try {
       await this.call({ type: "nspanel_companion/updater/autopair" });
       this.updater = await this.call({ type: "nspanel_companion/updater/status" });
-      this.updaterMessage = "";
     } catch (error) {
-      this.error = error?.message || "Unable to pair updater";
-      this.updaterMessage = "";
-    } finally { this.busy = false; this.render(); }
+      /* No updater on this host. The manual path stays available. */
+    }
   }
 
   async unpairUpdater() {
@@ -769,7 +773,6 @@ class NSPanelCompanionPanel extends HTMLElement {
       button.addEventListener("click", () => this.unpairScrypted(button.dataset.scryptedUnpair, false)));
     this.shadowRoot.querySelectorAll("[data-scrypted-clear]").forEach((button) =>
       button.addEventListener("click", () => this.unpairScrypted(button.dataset.scryptedClear, true)));
-    this.shadowRoot.querySelector("#updater-autopair")?.addEventListener("click", () => this.autopairUpdater());
     this.shadowRoot.querySelector("#updater-pair")?.addEventListener("submit", (event) => {
       event.preventDefault(); this.pairUpdater(event.currentTarget);
     });
@@ -994,8 +997,8 @@ class NSPanelCompanionPanel extends HTMLElement {
 
   updaterSection() {
     const paired = this.updater?.paired;
-    if (!paired) return `<section class="updater-section"><div class="updater-head"><div><h2>Panel installation & updates</h2><p>Optional: pair the NSPanel Updater add-on to discover ADB-enabled panels and install signed releases.</p></div></div><button id="updater-autopair" class="primary" ${this.busy ? "disabled" : ""}>${this.busy ? "Pairing…" : "Pair updater"}</button>${this.updaterMessage ? `<div class="notice">${escapeHtml(this.updaterMessage)}</div>` : ""}<small>Install and start the optional updater add-on, then pair it here.</small><details class="updater-manual"><summary>The updater runs on another host</summary><form id="updater-pair" class="updater-pair"><label>Updater URL<input name="base_url" type="url" value="http://${escapeHtml(location.hostname)}:8098" required></label><label>Pairing code<input name="code" class="pair-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required></label><button ${this.busy ? "disabled" : ""}>Pair manually</button></form><small>Copy the six-digit code from the add-on log.</small></details></section>`;
-    return `<section class="updater-section"><div class="updater-head"><div><h2>Panel installation & updates</h2><p>Scan only when requested. Updates require confirmation and restore the app as Home.</p></div><div class="updater-status"><span class="status online">Updater paired</span><button id="updater-unpair" ${this.busy ? "disabled" : ""}>Unpair</button></div></div><form id="adb-discovery" class="adb-scan"><label>Private subnet<input id="adb-subnet" name="subnet" value="192.168.0.0/24" pattern="[0-9./]+" required></label><button class="primary" ${this.busy ? "disabled" : ""}>${this.busy ? "Working…" : "Discover ADB panels"}</button></form>${this.updaterMessage ? `<div class="notice">${escapeHtml(this.updaterMessage)}</div>` : ""}${this.adbDevices.length ? `<div class="adb-devices">${this.adbDevices.map((device) => this.adbDeviceCard(device)).join("")}</div>` : ""}</section>`;
+    if (!paired) return `<section class="updater-section"><div class="updater-head"><div><h2>Panel installation & updates</h2><p>Optional: pair the NSPanel Updater add-on to discover ADB-enabled panels and install signed releases.</p></div></div><small>Install and start the NSPanel Companion Updater add-on and it will connect here on its own.</small><details class="updater-manual"><summary>The updater runs on another host</summary><form id="updater-pair" class="updater-pair"><label>Updater URL<input name="base_url" type="url" value="http://${escapeHtml(location.hostname)}:8098" required></label><label>Pairing code<input name="code" class="pair-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required></label><button ${this.busy ? "disabled" : ""}>Pair manually</button></form><small>Copy the six-digit code from the add-on log.</small></details></section>`;
+    return `<section class="updater-section"><div class="updater-head"><div><h2>Panel installation & updates</h2><p>Scan only when requested. Updates require confirmation and restore the app as Home.</p></div><div class="updater-status"><span class="status online">Updater add-on connected</span>${this.updater?.paired?.source === "manual" ? `<button id="updater-unpair" ${this.busy ? "disabled" : ""}>Unpair</button>` : ""}</div></div><form id="adb-discovery" class="adb-scan"><label>Private subnet<input id="adb-subnet" name="subnet" value="192.168.0.0/24" pattern="[0-9./]+" required></label><button class="primary" ${this.busy ? "disabled" : ""}>${this.busy ? "Working…" : "Discover ADB panels"}</button></form>${this.updaterMessage ? `<div class="notice">${escapeHtml(this.updaterMessage)}</div>` : ""}${this.adbDevices.length ? `<div class="adb-devices">${this.adbDevices.map((device) => this.adbDeviceCard(device)).join("")}</div>` : ""}</section>`;
   }
 
   adbDeviceCard(device) {

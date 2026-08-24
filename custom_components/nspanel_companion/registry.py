@@ -64,7 +64,9 @@ class PanelRegistry:
             return None
         return {key: value for key, value in self._updater.items() if key != "token"}
 
-    async def async_pair_updater(self, base_url: str, code: str) -> dict[str, Any]:
+    async def async_pair_updater(
+        self, base_url: str, code: str, source: str = "manual"
+    ) -> dict[str, Any]:
         base_url = base_url.strip().rstrip("/")
         if not base_url.startswith(("http://", "https://")):
             raise ValueError("Invalid updater URL")
@@ -91,6 +93,9 @@ class PanelRegistry:
             "name": str(payload.get("name") or "NSPanel Companion Updater")[:64],
             "base_url": base_url,
             "token": token,
+            # Recorded so the UI can tell an add-on it can re-pair by itself from
+            # one a person entered by hand and would have to re-enter.
+            "source": "local" if source == "local" else "manual",
             "paired_at": datetime.now(UTC).isoformat(),
         }
         await self._save()
@@ -113,7 +118,7 @@ class PanelRegistry:
                 continue
             code = str(payload.get("code") or "").strip()
             if code:
-                return await self.async_pair_updater(base_url, code)
+                return await self.async_pair_updater(base_url, code, source="local")
         raise ValueError(
             "The updater add-on could not be reached on this host. If it runs "
             "elsewhere, pair it manually with its address and pairing code."

@@ -81,6 +81,18 @@ class UpdaterAutopairTest(unittest.IsolatedAsyncioTestCase):
             [("http://127.0.0.1:8098/api/pair", {"code": "123456"})], session.posts
         )
         self.assertNotIn("token", public)
+        self.assertEqual("local", public["source"])
+
+    async def test_manual_pairing_is_recorded_as_manual(self):
+        """The UI offers unpair only for updaters it cannot re-pair by itself."""
+        session = FakeSession(
+            {}, FakeResponse(200, {"id": "updater-9", "name": "Updater", "token": "tok"})
+        )
+        registry = make_registry(session)
+
+        public = await registry.async_pair_updater("http://192.0.2.10:8098", "654321")
+
+        self.assertEqual("manual", public["source"])
 
     async def test_reports_clearly_when_the_add_on_is_not_on_this_host(self):
         session = FakeSession({}, FakeResponse(200, {}))
