@@ -68,6 +68,17 @@ class FrontendContractTest(unittest.TestCase):
         repository = "https://github.com/hestiaworks/nspanel-companion-integration"
         self.assertEqual(repository, manifest["documentation"])
         self.assertEqual(f"{repository}/issues", manifest["issue_tracker"])
+        self.assertIn("requirements", manifest)
+
+    def test_manifest_keys_are_ordered_the_way_hassfest_demands(self):
+        """domain and name first, everything else alphabetical.
+
+        hassfest fails the build on this, so catching it here turns a CI round
+        trip into an immediate local failure.
+        """
+        keys = list(json.loads((ROOT / "custom_components/nspanel_companion/manifest.json").read_text()))
+        self.assertEqual(["domain", "name"], keys[:2])
+        self.assertEqual(sorted(keys[2:]), keys[2:])
 
     def test_admin_websocket_commands_use_current_ha_decorator(self):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()

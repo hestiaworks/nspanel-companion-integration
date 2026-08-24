@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 
 from .const import DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .frontend import async_register_panel, async_setup_frontend_assets, async_unregister_panel
@@ -14,6 +15,11 @@ from .registry import PanelRegistry
 from .scrypted import ScryptedDiscovery
 from .schedules import ScheduleManager
 from .websocket import async_register_websocket_commands
+
+
+# There is no YAML configuration: panels are added from the UI config flow, and
+# async_setup only registers the APIs the panels and the frontend talk to.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
