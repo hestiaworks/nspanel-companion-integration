@@ -30,7 +30,13 @@ install it, restart Home Assistant, then add **NSPanel Companion** from
 `tools/ha-test-server.js` is a dependency-free stand-in for Home Assistant used to
 develop and test panels without a live instance. `tools/test-panel-sync.js` and
 `tools/test-panel-websocket.js` exercise this integration's HTTP and WebSocket APIs.
-See `docs/LOCAL_TEST_HARNESS.md`.
+
+```bash
+node tools/ha-test-server.js
+```
+
+It listens on port 8124. From an Android emulator the host is reachable at
+`10.0.2.2`, so pair the panel against `http://10.0.2.2:8124`.
 
 ## Related repositories
 
