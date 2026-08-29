@@ -204,6 +204,38 @@ class LayoutValidationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             layout_module.validate_layout(value)
 
+    def test_normalizes_and_validates_system_ui_settings(self):
+        """The panel's nav bar is an enum so a fourth mode can be added later.
+
+        `listener` is what the app has always done — re-hide the bars when
+        Android brings them back. `immersive` asks the app to write Android's
+        own `policy_control`, which suppresses them instead of chasing them.
+        """
+        value = layout_module.validate_layout({
+            "schema_version": 1,
+            "revision": "kiosk-ish",
+            "nav_bar_mode": "immersive",
+            "hide_accessibility_button": True,
+            "pages": [{"id": "room", "widgets": []}],
+        })
+        self.assertEqual("immersive", value["nav_bar_mode"])
+        self.assertTrue(value["hide_accessibility_button"])
+        with self.assertRaisesRegex(ValueError, "navigation bar"):
+            layout_module.validate_layout({
+                "schema_version": 1,
+                "revision": "bad-mode",
+                "nav_bar_mode": "kiosk",
+                "pages": [{"id": "room", "widgets": []}],
+            })
+
+    def test_defaults_leave_system_ui_as_it_has_always_behaved(self):
+        value = layout_module.validate_layout({
+            "schema_version": 1,
+            "revision": "room-1",
+            "pages": [{"id": "room", "widgets": []}],
+        })
+        self.assertEqual("listener", value["nav_bar_mode"])
+        self.assertFalse(value["hide_accessibility_button"])
 
 if __name__ == "__main__":
     unittest.main()

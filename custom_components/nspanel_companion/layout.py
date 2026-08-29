@@ -20,6 +20,13 @@ CONTROL_ICONS = {
     "water", "faucet", "sprinkler", "pool", "shower", "television", "music", "radio",
     "gamepad", "projector", "bedroom", "bathroom", "office", "garden", "balcony", "stairs",
 }
+# How the panel treats Android's navigation bar. `listener` re-hides the bars
+# whenever Android brings them back, which is what the app has always done and
+# leaves them visible for a moment. `immersive` writes Android's own
+# policy_control so they are never summoned, and needs WRITE_SECURE_SETTINGS.
+# `visible` leaves them alone. A `kiosk` mode using lock task may join these.
+NAV_BAR_MODES = {"listener", "immersive", "visible"}
+
 PAGE_ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 ENTITY_ID = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 STREAM_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -157,6 +164,13 @@ def validate_layout(value: Any) -> dict[str, Any]:
     if not 0 <= mic_linger_seconds <= 60:
         raise ValueError("Microphone indicator duration must be 0–60 seconds")
     normalized["mic_indicator_linger_seconds"] = mic_linger_seconds
+    nav_bar_mode = str(value.get("nav_bar_mode", "listener"))
+    if nav_bar_mode not in NAV_BAR_MODES:
+        raise ValueError("Invalid navigation bar mode")
+    normalized["nav_bar_mode"] = nav_bar_mode
+    normalized["hide_accessibility_button"] = bool(
+        value.get("hide_accessibility_button", False)
+    )
     theme_mode = str(value.get("theme_mode", "light"))
     if theme_mode not in {"light", "dark", "inherit"}:
         raise ValueError("Invalid panel theme")
