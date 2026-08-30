@@ -241,6 +241,7 @@ async def ws_updater_update(hass, connection, msg) -> None:
     vol.Required("type"): "nspanel_companion/panels/restart",
     vol.Required("panel_id"): str,
     vol.Optional("address", default=""): str,
+    vol.Optional("device", default=False): bool,
 })
 async def ws_restart_panel(hass, connection, msg) -> None:
     """Restart a panel's app, down its own socket where there is one.
@@ -249,9 +250,14 @@ async def ws_restart_panel(hass, connection, msg) -> None:
     A panel that is not holding one is the case worth having a second route
     for at all — it is why anyone reaches for this — so that falls to the
     add-on, which drives ADB and does not need the app to be answering.
+
+    `device` reboots Android instead of relaunching the app. That can only
+    go over ADB: an app cannot restart the device it is running on.
     """
+    # Rebooting the panel is not something its app can do to the device it
+    # runs on, so that never goes down the socket.
     socket = hass.data.get(DOMAIN, {}).get(DATA_PANEL_SOCKETS, {}).get(msg["panel_id"])
-    if socket is not None and not socket.closed:
+    if not msg["device"] and socket is not None and not socket.closed:
         try:
             await socket.send_json({"type": "restart"})
             connection.send_result(msg["id"], {"restarted": True, "via": "panel"})
@@ -266,7 +272,9 @@ async def ws_restart_panel(hass, connection, msg) -> None:
         )
         return
     try:
-        result = await _registry(hass).async_updater_request("/api/restart", {"address": address})
+        result = await _registry(hass).async_updater_request(
+            "/api/restart", {"address": address, "device": msg["device"]},
+        )
         connection.send_result(msg["id"], {"restarted": True, "via": "updater", **result})
     except ValueError as err:
         connection.send_error(msg["id"], "panel_restart_failed", str(err))

@@ -368,8 +368,9 @@ class NSPanelCompanionPanel extends HTMLElement {
     } finally { this.busy = false; this.render(); }
   }
 
-  async restartPanel() {
+  async restartPanel(device = false) {
     if (!this.editor) return;
+    if (device && !confirm("Reboot the panel? It will be unavailable for about a minute.")) return;
     this.busy = true; this.error = "";
     try {
       const result = await this.call({
@@ -378,10 +379,13 @@ class NSPanelCompanionPanel extends HTMLElement {
         // The updater knows the panel by address; without one it can only
         // be reached down its own socket.
         address: String(this.editor.panel.address || ""),
+        device,
       });
-      this.error = result?.via === "updater"
-        ? "Restarted over ADB; the panel was not connected."
-        : "Restart sent to the panel.";
+      this.error = device
+        ? "Rebooting the panel; it will be back in about a minute."
+        : result?.via === "updater"
+          ? "Restarted over ADB; the panel was not connected."
+          : "Restart sent to the panel.";
     } catch (error) {
       this.error = error?.message || "Unable to restart the panel";
     } finally { this.busy = false; this.render(); }
@@ -808,7 +812,8 @@ class NSPanelCompanionPanel extends HTMLElement {
       event.preventDefault(); this.pairUpdater(event.currentTarget);
     });
     this.shadowRoot.querySelector("#updater-unpair")?.addEventListener("click", () => this.unpairUpdater());
-    this.shadowRoot.querySelector("[data-restart-panel]")?.addEventListener("click", () => this.restartPanel());
+    this.shadowRoot.querySelector("[data-restart-panel]")?.addEventListener("click", () => this.restartPanel(false));
+    this.shadowRoot.querySelector("[data-reboot-panel]")?.addEventListener("click", () => this.restartPanel(true));
     this.shadowRoot.querySelector("#adb-discovery")?.addEventListener("submit", (event) => {
       event.preventDefault(); this.discoverAdbPanels(event.currentTarget);
     });
@@ -1217,7 +1222,7 @@ class NSPanelCompanionPanel extends HTMLElement {
           <fieldset class="system-ui"><legend>Android system UI</legend><label>Navigation bar<select name="nav_bar_mode"><option value="listener" ${String(layout.nav_bar_mode || "listener") === "listener" ? "selected" : ""}>Hide, and re-hide when Android shows it</option><option value="immersive" ${String(layout.nav_bar_mode || "listener") === "immersive" ? "selected" : ""}>Suppress entirely (recommended)</option><option value="visible" ${String(layout.nav_bar_mode || "listener") === "visible" ? "selected" : ""}>Leave visible</option></select><small>Re-hiding lets the bar appear for a moment whenever a long press or an edge swipe summons it. Suppressing it stops Android summoning it at all.</small></label><label class="check"><input name="hide_accessibility_button" type="checkbox" ${layout.hide_accessibility_button ? "checked" : ""}> Hide the panel's floating back button</label><small>Suppressing the navigation bar and hiding the back button both need a system permission the updater add-on grants when it installs the app. If the panel has not been updated since this setting appeared, update it once and these will take effect.</small></fieldset>
           <label>Stable device ID<input value="${escapeHtml(panel.device_id)}" readonly></label>
           <dl><div><dt>Connection</dt><dd>${panel.revoked ? "Revoked" : online ? "Online" : "Offline"}</dd></div><div><dt>Registered</dt><dd>${formatDate(panel.created_at)}</dd></div><div><dt>App version</dt><dd>${escapeHtml(panel.app_version || "—")}</dd></div></dl>
-          <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save general settings</button><button type="button" data-restart-panel ${this.busy ? "disabled" : ""}>Restart panel</button></div>
+          <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save general settings</button><button type="button" data-restart-panel ${this.busy ? "disabled" : ""}>Restart app</button><button type="button" data-reboot-panel ${this.busy ? "disabled" : ""}>Reboot panel</button></div>
         </form>
       </section>
       <form id="layout-editor" class="workspace-layout-form">
