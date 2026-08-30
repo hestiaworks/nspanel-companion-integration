@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import get_url
 
-from .const import DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DOMAIN
+from .const import DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DOMAIN
 from .pairing import PairingManager
 from .panel_discovery import PanelDiscovery
 from .registry import PanelRegistry
@@ -233,6 +233,43 @@ async def ws_updater_update(hass, connection, msg) -> None:
         }))
     except ValueError as err:
         connection.send_error(msg["id"], "updater_update_failed", str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({
+    vol.Required("type"): "nspanel_companion/panels/restart",
+    vol.Required("panel_id"): str,
+    vol.Optional("address", default=""): str,
+})
+async def ws_restart_panel(hass, connection, msg) -> None:
+    """Restart a panel's app, down its own socket where there is one.
+
+    A panel holding a live socket can be told directly and does it itself.
+    A panel that is not holding one is the case worth having a second route
+    for at all — it is why anyone reaches for this — so that falls to the
+    add-on, which drives ADB and does not need the app to be answering.
+    """
+    socket = hass.data.get(DOMAIN, {}).get(DATA_PANEL_SOCKETS, {}).get(msg["panel_id"])
+    if socket is not None and not socket.closed:
+        try:
+            await socket.send_json({"type": "restart"})
+            connection.send_result(msg["id"], {"restarted": True, "via": "panel"})
+            return
+        except Exception:  # noqa: BLE001 - a dead socket falls through to ADB
+            pass
+    address = msg["address"]
+    if not address:
+        connection.send_error(
+            msg["id"], "panel_restart_failed",
+            "The panel is not connected, and no address was given to reach it over ADB",
+        )
+        return
+    try:
+        result = await _registry(hass).async_updater_request("/api/restart", {"address": address})
+        connection.send_result(msg["id"], {"restarted": True, "via": "updater", **result})
+    except ValueError as err:
+        connection.send_error(msg["id"], "panel_restart_failed", str(err))
 
 
 @websocket_api.require_admin
@@ -473,3 +510,4 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_unpair_updater)
     websocket_api.async_register_command(hass, ws_updater_discover)
     websocket_api.async_register_command(hass, ws_updater_update)
+    websocket_api.async_register_command(hass, ws_restart_panel)

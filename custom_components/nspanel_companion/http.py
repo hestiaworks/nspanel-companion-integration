@@ -10,7 +10,7 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import callback
 
 from .pairing import PairingManager
-from .const import DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
+from .const import DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .registry import PanelRegistry
 from .permissions import allowed_entity_ids, service_allowed
 from .schedules import ScheduleManager
@@ -194,6 +194,8 @@ class PanelWebSocketView(HomeAssistantView):
 
         unsub_state = self._hass.bus.async_listen("state_changed", state_changed)
         unsub_doorbell = self._hass.bus.async_listen("nspanel_doorbell", doorbell)
+        sockets = self._hass.data.setdefault(DOMAIN, {}).setdefault(DATA_PANEL_SOCKETS, {})
+        sockets[panel_id] = socket
         try:
             async for message in socket:
                 if message.type != WSMsgType.TEXT:
@@ -225,6 +227,11 @@ class PanelWebSocketView(HomeAssistantView):
         finally:
             unsub_state()
             unsub_doorbell()
+            # Only clear the entry if it is still this connection: a panel
+            # that reconnected before this one unwound has already replaced
+            # it, and dropping that would lose the live socket.
+            if sockets.get(panel_id) is socket:
+                sockets.pop(panel_id, None)
         return socket
 
 

@@ -255,6 +255,26 @@ class LayoutValidationTest(unittest.TestCase):
                 "pages": [{"id": "room", "widgets": []}],
             })
 
+    def test_normalizes_waking_on_approach(self):
+        """The panel has a proximity sensor and it is a wake-up sensor.
+
+        Off by default: a listener costs power on a panel that mostly does
+        not care, and a screen that lights when someone walks past is not
+        what everyone wants on a bedroom wall.
+        """
+        def panel(**extra):
+            return layout_module.validate_layout({
+                "schema_version": 1,
+                "revision": "proximity",
+                "pages": [{"id": "room", "widgets": []}],
+                **extra,
+            })
+
+        self.assertFalse(panel()["wake_on_approach"])
+        self.assertTrue(panel(wake_on_approach=True)["wake_on_approach"])
+        with self.assertRaisesRegex(ValueError, "wake_on_approach"):
+            panel(wake_on_approach="yes")
+
     def test_defaults_leave_system_ui_as_it_has_always_behaved(self):
         value = layout_module.validate_layout({
             "schema_version": 1,

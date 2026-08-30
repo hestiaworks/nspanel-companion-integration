@@ -180,6 +180,13 @@ def validate_layout(value: Any) -> dict[str, Any]:
     normalized["hide_accessibility_button"] = bool(
         value.get("hide_accessibility_button", False)
     )
+    # The proximity sensor is a wake-up sensor on this hardware, so it can
+    # light the screen from sleep. Off unless asked for: a listener costs
+    # power, and a panel that wakes as you walk past is not what every wall
+    # wants.
+    if "wake_on_approach" in value and not isinstance(value["wake_on_approach"], bool):
+        raise ValueError("wake_on_approach must be a boolean")
+    normalized["wake_on_approach"] = bool(value.get("wake_on_approach", False))
     theme_mode = str(value.get("theme_mode", "light"))
     if theme_mode not in {"light", "dark", "inherit"}:
         raise ValueError("Invalid panel theme")

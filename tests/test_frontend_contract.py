@@ -106,7 +106,8 @@ class FrontendContractTest(unittest.TestCase):
 
     def test_admin_websocket_commands_use_current_ha_decorator(self):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
-        self.assertEqual(25, source.count("@websocket_api.require_admin"))
+        # 26 with panels/restart, which is admin-only: it stops the panel.
+        self.assertEqual(26, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
         self.assertIn('{"nspanel-companion", "probable-nspanel"}', source)
         self.assertIn('device.get("adb_state") == "device"', source)

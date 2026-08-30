@@ -10,6 +10,7 @@ const DEFAULT_LAYOUT = (revision) => ({
   mic_indicator_linger_seconds: 15,
   nav_bar_mode: "listener",
   hide_accessibility_button: false,
+  wake_on_approach: false,
   pages: [
     { id: "climate", title: "Thermostat", widgets: [{ type: "thermostat" }] },
     { id: "weather", title: "Weather", widgets: [{ type: "weather" }] },
@@ -334,6 +335,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       mic_indicator_linger_seconds: Number(values.get("mic_indicator_linger_seconds") ?? 15),
       nav_bar_mode: String(values.get("nav_bar_mode") || "listener"),
       hide_accessibility_button: values.get("hide_accessibility_button") === "on",
+      wake_on_approach: values.get("wake_on_approach") === "on",
     };
     if (!name || !this.editor) return;
     this.busy = true; this.error = "";
@@ -363,6 +365,25 @@ class NSPanelCompanionPanel extends HTMLElement {
     } catch (error) {
       this.error = error?.message || "Unable to rename panel";
       this.render();
+    } finally { this.busy = false; this.render(); }
+  }
+
+  async restartPanel() {
+    if (!this.editor) return;
+    this.busy = true; this.error = "";
+    try {
+      const result = await this.call({
+        type: "nspanel_companion/panels/restart",
+        panel_id: this.editor.panel.panel_id,
+        // The updater knows the panel by address; without one it can only
+        // be reached down its own socket.
+        address: String(this.editor.panel.address || ""),
+      });
+      this.error = result?.via === "updater"
+        ? "Restarted over ADB; the panel was not connected."
+        : "Restart sent to the panel.";
+    } catch (error) {
+      this.error = error?.message || "Unable to restart the panel";
     } finally { this.busy = false; this.render(); }
   }
 
@@ -561,6 +582,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       mic_indicator_linger_seconds: Number(this.editor.layout.mic_indicator_linger_seconds ?? 15),
       nav_bar_mode: String(this.editor.layout.nav_bar_mode || "listener"),
       hide_accessibility_button: Boolean(this.editor.layout.hide_accessibility_button),
+      wake_on_approach: Boolean(this.editor.layout.wake_on_approach),
       theme_mode: this.editor.draftThemeMode,
       theme_dark: this.editor.draftThemeMode === "dark" || this.editor.draftThemeMode === "inherit" && Boolean(this._hass?.themes?.darkMode),
       pages,
@@ -786,6 +808,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       event.preventDefault(); this.pairUpdater(event.currentTarget);
     });
     this.shadowRoot.querySelector("#updater-unpair")?.addEventListener("click", () => this.unpairUpdater());
+    this.shadowRoot.querySelector("[data-restart-panel]")?.addEventListener("click", () => this.restartPanel());
     this.shadowRoot.querySelector("#adb-discovery")?.addEventListener("submit", (event) => {
       event.preventDefault(); this.discoverAdbPanels(event.currentTarget);
     });
@@ -1190,11 +1213,11 @@ class NSPanelCompanionPanel extends HTMLElement {
         <form id="panel-general" class="settings-card">
           <label>Panel name<input name="panel_name" maxlength="64" required value="${escapeHtml(panel.name)}" placeholder="Living room"></label>
           <label>Panel theme<select name="theme_mode"><option value="inherit" ${this.editor.draftThemeMode === "inherit" ? "selected" : ""}>Auto · inherit Home Assistant</option><option value="light" ${this.editor.draftThemeMode === "light" ? "selected" : ""}>Light</option><option value="dark" ${this.editor.draftThemeMode === "dark" ? "selected" : ""}>Dark</option></select><small>Auto resolves the active Home Assistant light/dark appearance when the dashboard is published. Explicit Light or Dark stays fixed.</small></label>
-          <fieldset class="dashboard-behavior"><legend>Dashboard behavior</legend><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>When disabled, the panel follows its Android display timeout.</small><label class="check"><input name="show_clock" type="checkbox" ${layout.show_clock !== false ? "checked" : ""}> Show Home Assistant time</label><label class="check"><input name="show_mic_indicator" type="checkbox" ${layout.show_mic_indicator !== false ? "checked" : ""}> Show microphone privacy indicator</label><label>Keep microphone indicator green after use<input name="mic_indicator_linger_seconds" type="number" min="0" max="60" value="${Number(layout.mic_indicator_linger_seconds ?? 15)}"><small>Seconds; use 0 to show green only during active capture.</small></label></fieldset>
+          <fieldset class="dashboard-behavior"><legend>Dashboard behavior</legend><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>When disabled, the panel follows its Android display timeout.</small><label class="check"><input name="wake_on_approach" type="checkbox" ${layout.wake_on_approach ? "checked" : ""}> Wake the display when someone approaches</label><small>Uses the panel's proximity sensor. Ignored while the display is set to stay on.</small><label class="check"><input name="show_clock" type="checkbox" ${layout.show_clock !== false ? "checked" : ""}> Show Home Assistant time</label><label class="check"><input name="show_mic_indicator" type="checkbox" ${layout.show_mic_indicator !== false ? "checked" : ""}> Show microphone privacy indicator</label><label>Keep microphone indicator green after use<input name="mic_indicator_linger_seconds" type="number" min="0" max="60" value="${Number(layout.mic_indicator_linger_seconds ?? 15)}"><small>Seconds; use 0 to show green only during active capture.</small></label></fieldset>
           <fieldset class="system-ui"><legend>Android system UI</legend><label>Navigation bar<select name="nav_bar_mode"><option value="listener" ${String(layout.nav_bar_mode || "listener") === "listener" ? "selected" : ""}>Hide, and re-hide when Android shows it</option><option value="immersive" ${String(layout.nav_bar_mode || "listener") === "immersive" ? "selected" : ""}>Suppress entirely (recommended)</option><option value="visible" ${String(layout.nav_bar_mode || "listener") === "visible" ? "selected" : ""}>Leave visible</option></select><small>Re-hiding lets the bar appear for a moment whenever a long press or an edge swipe summons it. Suppressing it stops Android summoning it at all.</small></label><label class="check"><input name="hide_accessibility_button" type="checkbox" ${layout.hide_accessibility_button ? "checked" : ""}> Hide the panel's floating back button</label><small>Suppressing the navigation bar and hiding the back button both need a system permission the updater add-on grants when it installs the app. If the panel has not been updated since this setting appeared, update it once and these will take effect.</small></fieldset>
           <label>Stable device ID<input value="${escapeHtml(panel.device_id)}" readonly></label>
           <dl><div><dt>Connection</dt><dd>${panel.revoked ? "Revoked" : online ? "Online" : "Offline"}</dd></div><div><dt>Registered</dt><dd>${formatDate(panel.created_at)}</dd></div><div><dt>App version</dt><dd>${escapeHtml(panel.app_version || "—")}</dd></div></dl>
-          <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save general settings</button></div>
+          <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save general settings</button><button type="button" data-restart-panel ${this.busy ? "disabled" : ""}>Restart panel</button></div>
         </form>
       </section>
       <form id="layout-editor" class="workspace-layout-form">
