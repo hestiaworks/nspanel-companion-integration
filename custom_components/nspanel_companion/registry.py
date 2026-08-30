@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from datetime import UTC, datetime
 import hashlib
 import re
@@ -13,7 +14,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN, STORAGE_KEY, STORAGE_VERSION
+from .const import DATA_PANEL_SOCKETS, DOMAIN, STORAGE_KEY, STORAGE_VERSION
 from .layout import validate_layout
 
 DEVICE_ID = re.compile(r"^[A-Za-z0-9._:-]{4,128}$")
@@ -388,12 +389,33 @@ class PanelRegistry:
         record = self._panels.pop(panel_id, None)
         if record is None:
             raise ValueError("Unknown panel")
+        await self._async_tell_panel_it_was_revoked(panel_id)
         device_registry = dr.async_get(self._hass)
         device = device_registry.async_get_device(identifiers={(DOMAIN, panel_id)})
         if device:
             device_registry.async_remove_device(device.id)
         await self._save()
         return self._public(record)
+
+    async def _async_tell_panel_it_was_revoked(self, panel_id: str) -> None:
+        """Tell a panel it has been unpaired, while it is still listening.
+
+        Unpairing was one-sided: Home Assistant forgot the panel and the
+        panel carried on showing a dashboard it was no longer entitled to,
+        until something made it reconnect and be refused. A panel holding a
+        socket can be told now, and it clears its credentials and offers
+        itself for pairing again.
+
+        Best effort by nature — a panel that is not connected finds out the
+        old way, on its next attempt.
+        """
+        sockets = self._hass.data.get(DOMAIN, {}).get(DATA_PANEL_SOCKETS, {})
+        socket = sockets.pop(panel_id, None)
+        if socket is None or socket.closed:
+            return
+        with suppress(Exception):
+            await socket.send_json({"type": "revoked"})
+            await socket.close()
 
     async def async_set_layout(self, panel_id: str, layout: dict[str, Any]) -> dict[str, Any]:
         record = self._require(panel_id)

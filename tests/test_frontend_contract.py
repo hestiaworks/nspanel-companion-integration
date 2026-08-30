@@ -130,3 +130,18 @@ class FrontendContractTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RevokeTellsThePanelTest(unittest.TestCase):
+    """Unpairing was one-sided, and that is the whole point of the fix."""
+
+    def test_revoking_notifies_a_connected_panel(self):
+        source = (ROOT / "custom_components/nspanel_companion/registry.py").read_text()
+        revoke = source[source.index("async def async_revoke"):source.index("async def async_set_layout")]
+        self.assertIn("_async_tell_panel_it_was_revoked", revoke)
+        notify = source[source.index("async def _async_tell_panel_it_was_revoked"):]
+        self.assertIn('"type": "revoked"', notify)
+        # The socket is closed, not merely written to: a panel left holding
+        # an open socket to a registration that no longer exists would sit
+        # there believing it is still paired.
+        self.assertIn("socket.close()", notify)
