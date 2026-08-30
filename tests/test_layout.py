@@ -275,6 +275,13 @@ class LayoutValidationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "wake_on_approach"):
             panel(wake_on_approach="yes")
 
+        # How close is close enough. The sensor reports reflectance rather
+        # than distance, so this is a margin above the empty-wall reading.
+        self.assertEqual("medium", panel()["wake_sensitivity"])
+        self.assertEqual("high", panel(wake_sensitivity="high")["wake_sensitivity"])
+        with self.assertRaisesRegex(ValueError, "sensitivity"):
+            panel(wake_sensitivity="very")
+
     def test_defaults_leave_system_ui_as_it_has_always_behaved(self):
         value = layout_module.validate_layout({
             "schema_version": 1,

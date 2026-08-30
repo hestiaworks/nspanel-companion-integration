@@ -187,6 +187,10 @@ def validate_layout(value: Any) -> dict[str, Any]:
     if "wake_on_approach" in value and not isinstance(value["wake_on_approach"], bool):
         raise ValueError("wake_on_approach must be a boolean")
     normalized["wake_on_approach"] = bool(value.get("wake_on_approach", False))
+    wake_sensitivity = str(value.get("wake_sensitivity", "medium"))
+    if wake_sensitivity not in {"low", "medium", "high"}:
+        raise ValueError("Invalid wake sensitivity")
+    normalized["wake_sensitivity"] = wake_sensitivity
     theme_mode = str(value.get("theme_mode", "light"))
     if theme_mode not in {"light", "dark", "inherit"}:
         raise ValueError("Invalid panel theme")
