@@ -16,7 +16,7 @@ FIXTURE = Path(__file__).parent / "fixtures/layout-fixture.json"
 
 # Recorded so a one-sided edit fails here instead of silently diverging from the
 # panel. Update it with nspanel-companion/schema/sync.sh, which rewrites both.
-LAYOUT_FIXTURE_SHA256 = "93b98b6b3b64afc19ccdcad3e91a48aae8d6016a3e0f881a5a724178464fc36a"
+LAYOUT_FIXTURE_SHA256 = "136f9aa3ce9b31ff60d8d2bc25d3dae93cc414ae1c03717efba244827dbb2a6c"
 
 spec = spec_from_file_location("layout", ROOT / "custom_components/nspanel_companion/layout.py")
 layout = module_from_spec(spec)

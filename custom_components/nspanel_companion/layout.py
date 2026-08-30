@@ -93,8 +93,17 @@ def validate_layout(value: Any) -> dict[str, Any]:
                     if gradual_script is not None and (not ENTITY_ID.fullmatch(str(gradual_script)) or not str(gradual_script).startswith("script.")):
                         raise ValueError(f"{script_field} must be a script entity")
             if widget.get("type") == "camera":
-                if str(widget.get("tap_action", "fullscreen")) not in {"none", "fullscreen", "intercom"}:
-                    raise ValueError("Invalid camera tap action")
+                # tap_action offered fullscreen, which a full-bleed camera
+                # page already is. The only choice that meant anything was
+                # the intercom, so it is a checkbox now — and a layout
+                # written before it keeps whatever it had answered.
+                if "show_intercom" in widget:
+                    if not isinstance(widget["show_intercom"], bool):
+                        raise ValueError("show_intercom must be a boolean")
+                    widget["show_intercom"] = bool(widget["show_intercom"])
+                else:
+                    widget["show_intercom"] = widget.get("tap_action") == "intercom"
+                widget.pop("tap_action", None)
                 if "incoming_audio" in widget and not isinstance(widget["incoming_audio"], bool):
                     raise ValueError("incoming_audio must be a boolean")
                 stream_url = str(widget.get("stream_base_url", ""))

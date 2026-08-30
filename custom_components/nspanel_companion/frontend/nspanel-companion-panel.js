@@ -460,7 +460,7 @@ class NSPanelCompanionPanel extends HTMLElement {
   widgetTemplate(type) {
     if (type === "weather") return { type, forecast_days: 5, show_hourly: true };
     if (type === "entity_button") return { type, icon: "auto", show_timer: true, show_schedule: true, timer_presets: [5, 15, 30, 60], card_tap: false, show_fan_speed: false };
-    if (type === "camera") return { type, incoming_audio: false, tap_action: "fullscreen" };
+    if (type === "camera") return { type, incoming_audio: false, show_intercom: false };
     return { type };
   }
 
@@ -1073,7 +1073,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     if (widget.type === "sensor") configuration = `<label>Sensor entity${this.entityPicker(["sensor", "binary_sensor"], entity, "Search sensors…", field, pickerKey)}</label>`;
     if (widget.type === "camera") {
       const selectedCamera = widget.scrypted_bridge_id && widget.scrypted_camera_id ? `${widget.scrypted_bridge_id}|${widget.scrypted_camera_id}` : "";
-      configuration = `<label>Scrypted camera<select data-camera-source ${field("scrypted_source")} required><option value="">Select camera</option>${this.scryptedDoorbells.map((item) => { const value = `${item.bridge_id}|${item.id}`; return `<option value="${escapeHtml(value)}" ${selectedCamera === value ? "selected" : ""}>${escapeHtml(item.name)}</option>`; }).join("")}</select></label><div class="inline-checks"><label class="check"><input type="checkbox" ${field("incoming_audio")} ${widget.incoming_audio ? "checked" : ""}> Play incoming audio</label></div><label>Tap action<select ${field("tap_action")}><option value="none" ${widget.tap_action === "none" ? "selected" : ""}>None</option><option value="fullscreen" ${widget.tap_action !== "none" && widget.tap_action !== "intercom" ? "selected" : ""}>Open fullscreen</option><option value="intercom" ${widget.tap_action === "intercom" ? "selected" : ""}>Open intercom</option></select></label><small>The stream starts only while this page is visible and stops immediately after swiping away.</small>`;
+      configuration = `<label>Scrypted camera<select data-camera-source ${field("scrypted_source")} required><option value="">Select camera</option>${this.scryptedDoorbells.map((item) => { const value = `${item.bridge_id}|${item.id}`; return `<option value="${escapeHtml(value)}" ${selectedCamera === value ? "selected" : ""}>${escapeHtml(item.name)}</option>`; }).join("")}</select></label><div class="inline-checks"><label class="check"><input type="checkbox" ${field("incoming_audio")} ${widget.incoming_audio ? "checked" : ""}> Play incoming audio</label></div><label class="check"><input type="checkbox" ${field("show_intercom")} ${widget.show_intercom || widget.tap_action === "intercom" ? "checked" : ""}> Show intercom button</label><small>Adds a hold-to-talk button under the picture. The page is already full-screen, so tapping it does nothing.</small></label><small>The stream starts only while this page is visible and stops immediately after swiping away.</small>`;
     }
     if (widget.type === "controls") configuration = `<div class="notice draft-note">Legacy component: it automatically selects the first four supported controls. Replace it with explicit Home control components for predictable layouts.</div>`;
     return `<article class="widget-card" data-widget-drop="${index}" data-widget-page="${escapeHtml(page.id)}"><div class="widget-drag" draggable="true" data-widget-drag="${index}" data-widget-page="${escapeHtml(page.id)}" title="Drag to reorder">⠿</div><div class="widget-body"><div class="widget-title"><div><span class="eyebrow">Component ${index + 1}</span><h4>${escapeHtml(this.widgetName(widget))}</h4></div><button class="danger" type="button" data-widget-action="delete" data-widget-index="${index}" data-widget-page="${escapeHtml(page.id)}">Remove</button></div>${configuration}<label>Custom label <span class="optional">Optional</span><input ${field("label")} maxlength="48" value="${escapeHtml(widget.label || "")}" placeholder="Use the Home Assistant name"></label></div></article>`;
@@ -1120,7 +1120,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     if (camera) {
       const entity = this.previewEntity(camera);
       const name = camera.label || entity?.attributes?.friendly_name || "Camera";
-      return panel(`<div class="summary-camera"><i>▶</i><strong>${escapeHtml(name)}</strong><small>Full-page camera</small></div><div class="summary-tags"><span>${camera.incoming_audio ? "Audio on" : "Muted"}</span><span>${escapeHtml(camera.tap_action || "fullscreen")}</span></div>`, "camera");
+      return panel(`<div class="summary-camera"><i>▶</i><strong>${escapeHtml(name)}</strong><small>Full-page camera</small></div><div class="summary-tags"><span>${camera.incoming_audio ? "Audio on" : "Muted"}</span><span>${camera.show_intercom ? "Intercom" : "View only"}</span></div>`, "camera");
     }
     const rows = widgets.slice(0, 4).map((widget) => {
       const entity = this.previewEntity(widget);
@@ -1158,7 +1158,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         const daily = Array.from({ length: Number(widget.forecast_days ?? 5) }, (_, index) => `<span><small>${index ? ["Sat", "Sun", "Mon", "Tue"][index - 1] : "Today"}</small><i>${this.weatherGlyph(dailyConditions[index])}</i><em>${18 + index}°</em><b>${24 - index}°</b></span>`).join("");
         return `<div class="preview-weather native-weather"><div class="native-weather-main"><div class="weather-now"><i>${this.weatherGlyph(condition)}</i><strong>${escapeHtml(temperature)}°</strong><b>${escapeHtml(conditionLabel)}</b><small>Feels like ${escapeHtml(entity?.attributes?.apparent_temperature ?? temperature)}° · ${escapeHtml(entity?.attributes?.humidity ?? "48")}%</small></div><div class="daily-forecast">${daily}</div></div>${widget.show_hourly !== false ? `<div class="hourly-forecast"><p>${escapeHtml(conditionLabel)} conditions continue.</p><div>${hourly}</div></div>` : ""}</div>`;
       }
-      if (widget.type === "camera") return `<div class="preview-camera"><span>▶</span><b>${escapeHtml(name)}</b><small>${widget.incoming_audio ? "Audio on" : "Muted"} · ${escapeHtml(widget.tap_action || "fullscreen")}</small></div>`;
+      if (widget.type === "camera") return `<div class="preview-camera"><span>▶</span><b>${escapeHtml(name)}</b><small>${widget.incoming_audio ? "Audio on" : "Muted"} · ${widget.show_intercom ? "Intercom" : "View only"}</small></div>`;
       if (widget.type === "sensor") return `<div class="preview-tile sensor"><small>${escapeHtml(name)}</small><strong>${escapeHtml(entity?.state ?? "—")}</strong></div>`;
       const automatic = entity?.entity_id?.startsWith("fan.") ? "fan" : entity?.entity_id?.startsWith("cover.") ? "curtains" : entity?.entity_id?.startsWith("switch.") ? "power" : "light";
       const iconId = (widget.icon || "auto") === "auto" ? automatic : widget.icon;

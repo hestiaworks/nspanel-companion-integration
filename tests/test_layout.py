@@ -195,14 +195,41 @@ class LayoutValidationTest(unittest.TestCase):
                 "stream_base_url": "rtsp://192.0.2.76:46211/prebuffer",
                 "stream_name": "doorbell_sub",
                 "incoming_audio": True,
-                "tap_action": "intercom",
+                "show_intercom": True,
             }]}],
         })
-        self.assertEqual("camera", value["pages"][0]["widgets"][0]["type"])
+        widget = value["pages"][0]["widgets"][0]
+        self.assertEqual("camera", widget["type"])
+        self.assertTrue(widget["show_intercom"])
 
-        value["pages"][0]["widgets"][0]["tap_action"] = "browser"
+        value["pages"][0]["widgets"][0]["show_intercom"] = "yes"
         with self.assertRaises(ValueError):
             layout_module.validate_layout(value)
+
+    def test_a_camera_page_that_predates_the_checkbox_keeps_its_intercom(self):
+        """tap_action offered fullscreen, which a full-bleed page already is.
+
+        The option that survived is the intercom, so a layout written before
+        the checkbox existed carries its answer over rather than silently
+        losing the talk button.
+        """
+        def camera(**extra):
+            return layout_module.validate_layout({
+                "schema_version": 1,
+                "revision": "legacy",
+                "pages": [{"id": "camera", "widgets": [dict({
+                    "type": "camera",
+                    "stream_base_url": "rtsp://192.0.2.76:46211/prebuffer",
+                    "stream_name": "doorbell_sub",
+                }, **extra)]}],
+            })["pages"][0]["widgets"][0]
+
+        self.assertTrue(camera(tap_action="intercom")["show_intercom"])
+        self.assertFalse(camera(tap_action="fullscreen")["show_intercom"])
+        self.assertFalse(camera(tap_action="none")["show_intercom"])
+        self.assertFalse(camera()["show_intercom"])
+        # The checkbox wins where both are present.
+        self.assertTrue(camera(tap_action="none", show_intercom=True)["show_intercom"])
 
     def test_normalizes_and_validates_system_ui_settings(self):
         """The panel's nav bar is an enum so a fourth mode can be added later.

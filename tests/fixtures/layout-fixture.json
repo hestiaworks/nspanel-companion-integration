@@ -47,9 +47,9 @@
               {
                 "type": "camera",
                 "entity_id": "camera.door",
-                "tap_action": "intercom",
                 "incoming_audio": true,
-                "stream_base_url": "https://192.0.2.20:1984"
+                "stream_base_url": "https://192.0.2.20:1984",
+                "show_intercom": true
               }
             ]
           }
@@ -306,7 +306,7 @@
       }
     },
     {
-      "name": "camera tap actions",
+      "name": "camera intercom button",
       "layout": {
         "schema_version": 1,
         "revision": "fixture",
@@ -316,7 +316,7 @@
             "widgets": [
               {
                 "type": "camera",
-                "tap_action": "none"
+                "show_intercom": false
               }
             ]
           },
@@ -325,7 +325,7 @@
             "widgets": [
               {
                 "type": "camera",
-                "tap_action": "fullscreen"
+                "show_intercom": false
               }
             ]
           },
@@ -334,7 +334,7 @@
             "widgets": [
               {
                 "type": "camera",
-                "tap_action": "intercom"
+                "show_intercom": true
               }
             ]
           }
@@ -910,7 +910,7 @@
       }
     },
     {
-      "name": "camera tap action unknown",
+      "name": "camera intercom flag not a boolean",
       "layout": {
         "schema_version": 1,
         "revision": "fixture",
@@ -920,7 +920,7 @@
             "widgets": [
               {
                 "type": "camera",
-                "tap_action": "explode"
+                "show_intercom": "yes"
               }
             ]
           }
