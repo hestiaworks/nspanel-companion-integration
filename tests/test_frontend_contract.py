@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import json
+import re
 import unittest
 
 ROOT = Path(__file__).parents[1]
@@ -170,3 +171,38 @@ class IntercomSignallingTest(unittest.TestCase):
         # The other end must be told rather than left listening to a link
         # that will never carry anything again.
         self.assertIn("drop_panel", self.source())
+
+
+class TemplateScopeTest(unittest.TestCase):
+    """A template referencing a variable its method does not have.
+
+    The editor is one big class of methods returning template literals. A
+    method that interpolates `layout.` without a local `layout` throws a
+    ReferenceError at render time and takes the whole editor down with it —
+    which is how adding a page stopped working, from a one-word mistake no
+    syntax check could see.
+    """
+
+    METHOD = re.compile(r"^  (?:async )?([a-zA-Z][a-zA-Z0-9]*)\s*\(")
+
+    def test_no_method_interpolates_a_layout_it_does_not_have(self):
+        source = (
+            ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js"
+        ).read_text().splitlines()
+        current, has_local, offenders = None, False, []
+        for number, line in enumerate(source, 1):
+            match = self.METHOD.match(line)
+            if match:
+                current, has_local = match.group(1), False
+            # A local layout, however it was introduced — including by
+            # destructuring, which is how editorDialog gets one.
+            if re.search(r"\b(const|let|var)\s+layout\b", line) or re.search(
+                r"\b(const|let|var)\s*\{[^}]*\blayout\b[^}]*\}\s*=", line,
+            ):
+                has_local = True
+            # `this.editor.layout` and `page.layout` carry their own subject;
+            # a bare `layout.` needs one in scope.
+            if re.search(r"(?<![.\w])layout\.", line) and not has_local:
+                offenders.append(f"{current}() line {number}")
+        self.assertEqual([], offenders, "bare layout. with no local layout")
+
