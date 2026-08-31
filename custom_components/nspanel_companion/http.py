@@ -12,7 +12,8 @@ from homeassistant.core import callback
 
 from .pairing import PairingManager
 from .history import RANGE_BUCKETS, bucket, bucket_bounds, summarise
-from .const import DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
+from .intercom import CallBook, enabled_for, visible_layout
+from .const import DATA_CALL_BOOK, DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .registry import PanelRegistry
 from .permissions import allowed_entity_ids, service_allowed
 from .schedules import ScheduleManager
@@ -74,7 +75,8 @@ class PanelSyncView(HomeAssistantView):
             registry = self._registry()
             record = registry.heartbeat(panel_id, token, data)
             current_revision = str(data.get("layout_revision", ""))
-            layout = record.get("layout") if record.get("layout_revision") != current_revision else None
+            stored = record.get("layout") if record.get("layout_revision") != current_revision else None
+            layout = visible_layout(stored) if stored else None
             return web.json_response({
                 "panel_id": panel_id,
                 "panel_name": record.get("name"),
@@ -107,7 +109,7 @@ class PanelWebSocketView(HomeAssistantView):
         registry = self._registry()
         if not registry.authenticate(panel_id, token):
             return web.json_response({"error": "Invalid panel credentials"}, status=401)
-        layout = registry.layout(panel_id) or {}
+        layout = visible_layout(registry.layout(panel_id) or {})
         entities = allowed_entity_ids(layout, self._hass.states.async_entity_ids())
         doorbell_config = layout.get("doorbell") or {}
         socket = web.WebSocketResponse(heartbeat=20)
@@ -273,6 +275,34 @@ class PanelWebSocketView(HomeAssistantView):
         unsub_doorbell = self._hass.bus.async_listen("nspanel_doorbell", doorbell)
         sockets = self._hass.data.setdefault(DOMAIN, {}).setdefault(DATA_PANEL_SOCKETS, {})
         sockets[panel_id] = socket
+        book: CallBook = self._hass.data.setdefault(DOMAIN, {}).setdefault(
+            DATA_CALL_BOOK, CallBook(),
+        )
+
+        def intercom_roster() -> list[dict]:
+            """Every panel this one could call, as the call book sees them."""
+            known = []
+            for record in registry.list_public():
+                other_id = record["panel_id"]
+                known.append({
+                    "panel_id": other_id,
+                    "name": record.get("name"),
+                    "enabled": enabled_for(registry.layout(other_id) or {}),
+                    "connected": other_id in sockets,
+                })
+            return book.roster(known, viewer=panel_id)
+
+        async def send_roster() -> None:
+            if socket.closed or not enabled_for(layout):
+                return
+            await socket.send_json({"type": "intercom_roster", "panels": intercom_roster()})
+
+        async def tell(target: str, payload: dict) -> None:
+            other = sockets.get(target)
+            if other is not None and not other.closed:
+                await other.send_json(payload)
+
+        await send_roster()
         try:
             async for message in socket:
                 if message.type != WSMsgType.TEXT:
@@ -280,6 +310,55 @@ class PanelWebSocketView(HomeAssistantView):
                 data = {}
                 try:
                     data = message.json()
+                    if data.get("type") == "intercom_call":
+                        callee = str(data.get("panel_id", ""))
+                        call_id = book.open(panel_id, callee) if enabled_for(layout) else None
+                        if call_id is None:
+                            await socket.send_json({"type": "intercom_busy"})
+                            continue
+                        caller_name = next(
+                            (r.get("name") for r in registry.list_public()
+                             if r["panel_id"] == panel_id),
+                            panel_id,
+                        )
+                        await tell(callee, {
+                            "type": "intercom_ring",
+                            "call_id": call_id,
+                            "panel_id": panel_id,
+                            "name": caller_name or panel_id,
+                        })
+                        await socket.send_json({"type": "intercom_calling", "call_id": call_id})
+                        continue
+                    if data.get("type") in {"intercom_answer", "intercom_decline"}:
+                        call_id = str(data.get("call_id", ""))
+                        other = book.partner(call_id, panel_id)
+                        if other is None:
+                            continue
+                        if data["type"] == "intercom_decline":
+                            book.close(call_id)
+                            await tell(other, {"type": "intercom_end", "call_id": call_id})
+                        else:
+                            await tell(other, {"type": "intercom_answer", "call_id": call_id})
+                        continue
+                    if data.get("type") == "intercom_signal":
+                        # Relayed without being read: the SDP and ICE are the
+                        # panels' business, and Home Assistant holding an
+                        # opinion about them is a third thing to keep in step.
+                        call_id = str(data.get("call_id", ""))
+                        other = book.partner(call_id, panel_id)
+                        if other is not None:
+                            await tell(other, {
+                                "type": "intercom_signal",
+                                "call_id": call_id,
+                                "signal": data.get("signal"),
+                            })
+                        continue
+                    if data.get("type") == "intercom_end":
+                        call_id = str(data.get("call_id", ""))
+                        for other in book.close(call_id):
+                            if other != panel_id:
+                                await tell(other, {"type": "intercom_end", "call_id": call_id})
+                        continue
                     if data.get("type") == "history_request":
                         await send_history(
                             str(data.get("entity_id", "")), str(data.get("range", "24h")),
@@ -314,6 +393,15 @@ class PanelWebSocketView(HomeAssistantView):
             # it, and dropping that would lose the live socket.
             if sockets.get(panel_id) is socket:
                 sockets.pop(panel_id, None)
+            # A panel whose socket went away leaves whatever call it was in,
+            # and the other end is told rather than left listening to a link
+            # that will never carry anything again.
+            for stranded in book.drop_panel(panel_id):
+                other = sockets.get(stranded)
+                if other is not None and not other.closed:
+                    self._hass.async_create_task(
+                        other.send_json({"type": "intercom_end", "call_id": ""}),
+                    )
         return socket
 
 

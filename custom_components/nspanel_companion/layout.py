@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor", "camera", "history"}
+SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor", "camera", "history", "intercom"}
 # The spans a history page offers. How many bars each becomes is history.py's
 # business; this only decides what a layout may ask for.
 HISTORY_RANGES = {"6h", "24h", "7d", "30d"}
@@ -186,6 +186,13 @@ def validate_layout(value: Any) -> dict[str, Any]:
     nav_bar_mode = str(value.get("nav_bar_mode", "listener"))
     if nav_bar_mode not in NAV_BAR_MODES:
         raise ValueError("Invalid navigation bar mode")
+    # Intercom, alongside the doorbell and shaped the same way. Off unless a
+    # panel is opted in: a panel nobody configured should not appear in
+    # anyone's list and should not ring.
+    intercom = value.get("intercom")
+    if intercom is not None and not isinstance(intercom, dict):
+        raise ValueError("Intercom configuration must be an object")
+    normalized["intercom"] = {"enabled": bool((intercom or {}).get("enabled", False))}
     normalized["nav_bar_mode"] = nav_bar_mode
     normalized["hide_accessibility_button"] = bool(
         value.get("hide_accessibility_button", False)

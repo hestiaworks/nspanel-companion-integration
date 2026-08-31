@@ -145,3 +145,28 @@ class RevokeTellsThePanelTest(unittest.TestCase):
         # an open socket to a registration that no longer exists would sit
         # there believing it is still paired.
         self.assertIn("socket.close()", notify)
+
+
+class IntercomSignallingTest(unittest.TestCase):
+    """Home Assistant relays signals; it does not read them."""
+
+    def source(self):
+        return (ROOT / "custom_components/nspanel_companion/http.py").read_text()
+
+    def test_every_intercom_message_is_handled(self):
+        source = self.source()
+        for message in (
+            "intercom_call", "intercom_answer", "intercom_decline",
+            "intercom_signal", "intercom_end",
+        ):
+            self.assertIn(f'"{message}"', source, f"{message} is not handled")
+
+    def test_the_roster_and_ring_are_pushed(self):
+        source = self.source()
+        self.assertIn('"type": "intercom_roster"', source)
+        self.assertIn('"type": "intercom_ring"', source)
+
+    def test_a_dropped_socket_ends_the_call_it_was_in(self):
+        # The other end must be told rather than left listening to a link
+        # that will never carry anything again.
+        self.assertIn("drop_panel", self.source())

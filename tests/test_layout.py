@@ -318,5 +318,34 @@ class LayoutValidationTest(unittest.TestCase):
         self.assertEqual("listener", value["nav_bar_mode"])
         self.assertFalse(value["hide_accessibility_button"])
 
+    def test_normalizes_intercom_configuration(self):
+        """Intercom is off unless a panel is opted in.
+
+        A panel that has not been configured for it should not appear in
+        anyone's list, and should not ring.
+        """
+        def panel(**extra):
+            return layout_module.validate_layout({
+                "schema_version": 1,
+                "revision": "intercom",
+                "pages": [{"id": "p", "widgets": []}],
+                **extra,
+            })
+
+        self.assertEqual({"enabled": False}, panel()["intercom"])
+        self.assertTrue(panel(intercom={"enabled": True})["intercom"]["enabled"])
+        with self.assertRaisesRegex(ValueError, "Intercom"):
+            panel(intercom="yes")
+
+    def test_accepts_an_intercom_page(self):
+        value = layout_module.validate_layout({
+            "schema_version": 1,
+            "revision": "intercom-page",
+            "intercom": {"enabled": True},
+            "pages": [{"id": "i", "widgets": [{"type": "intercom"}]}],
+        })
+        self.assertEqual("intercom", value["pages"][0]["widgets"][0]["type"])
+
+
 if __name__ == "__main__":
     unittest.main()
