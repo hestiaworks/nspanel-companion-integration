@@ -255,6 +255,33 @@ class LayoutValidationTest(unittest.TestCase):
                 "pages": [{"id": "room", "widgets": []}],
             })
 
+    def test_normalizes_a_history_widget(self):
+        """A history page is one entity over one span of time."""
+        def page(**extra):
+            return layout_module.validate_layout({
+                "schema_version": 1,
+                "revision": "history",
+                "pages": [{"id": "h", "widgets": [dict({
+                    "type": "history",
+                    "entity_id": "sensor.bedroom_temp",
+                }, **extra)]}],
+            })["pages"][0]["widgets"][0]
+
+        self.assertEqual("24h", page()["history_range"])
+        self.assertEqual("7d", page(history_range="7d")["history_range"])
+        with self.assertRaisesRegex(ValueError, "history range"):
+            page(history_range="1y")
+
+    def test_a_history_widget_needs_an_entity(self):
+        # There is nothing to draw without one, and an empty page would look
+        # like a fault rather than a configuration someone forgot to finish.
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout({
+                "schema_version": 1,
+                "revision": "history",
+                "pages": [{"id": "h", "widgets": [{"type": "history"}]}],
+            })
+
     def test_normalizes_waking_on_approach(self):
         """The panel has a proximity sensor and it is a wake-up sensor.
 

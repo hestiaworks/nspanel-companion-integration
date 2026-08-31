@@ -7,9 +7,11 @@ import time
 from aiohttp import WSMsgType, web
 
 from homeassistant.components.http import HomeAssistantView
+from homeassistant.util import dt as dt_util
 from homeassistant.core import callback
 
 from .pairing import PairingManager
+from .history import RANGE_BUCKETS, bucket, bucket_bounds, summarise
 from .const import DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .registry import PanelRegistry
 from .permissions import allowed_entity_ids, service_allowed
@@ -151,6 +153,81 @@ class PanelWebSocketView(HomeAssistantView):
         await send_forecast(weather_entities, "daily")
         await send_forecast(weather_entities, "hourly")
 
+        async def history_samples(entity_id: str, span: str) -> list[tuple[float, float]]:
+            """Timestamped readings for a span, from whichever source has them.
+
+            Long-term statistics first: the recorder already keeps hourly
+            means and an hourly mean is a bucket. A sensor without a
+            state_class has none, so its raw states are read instead — more
+            expensive, and only as far back as the purge window reaches.
+            """
+            from homeassistant.components.recorder import get_instance, history as rec_history
+            from homeassistant.components.recorder.statistics import statistics_during_period
+
+            start, end, _ = bucket_bounds(span, time.time())
+            began = dt_util.utc_from_timestamp(start)
+            ended = dt_util.utc_from_timestamp(end)
+            period = "5minute" if span in {"6h", "24h"} else ("hour" if span == "7d" else "day")
+            recorder = get_instance(self._hass)
+
+            stats = await recorder.async_add_executor_job(
+                lambda: statistics_during_period(
+                    self._hass, began, ended, {entity_id}, period,
+                    None, {"mean", "min", "max"},
+                ),
+            )
+            rows = (stats or {}).get(entity_id) or []
+            samples = [
+                (float(row["start"]), float(row["mean"]))
+                for row in rows
+                if row.get("mean") is not None
+            ]
+            if samples:
+                return samples
+
+            states = await recorder.async_add_executor_job(
+                lambda: rec_history.state_changes_during_period(
+                    self._hass, began, ended, entity_id, include_start_time_state=True,
+                ),
+            )
+            samples = []
+            for state in (states or {}).get(entity_id, []):
+                try:
+                    samples.append((state.last_updated.timestamp(), float(state.state)))
+                except (TypeError, ValueError):
+                    continue  # unavailable, unknown, or simply not a number
+            return samples
+
+        async def send_history(entity_id: str, span: str) -> None:
+            if socket.closed or entity_id not in entities or span not in RANGE_BUCKETS:
+                return
+            try:
+                samples = await history_samples(entity_id, span)
+            except Exception:  # a recorder that is absent, purged or busy
+                return
+            buckets = bucket(samples, span, time.time())
+            state = self._hass.states.get(entity_id)
+            if socket.closed:
+                return
+            await socket.send_json({
+                "type": "history",
+                "entity_id": entity_id,
+                "range": span,
+                "buckets": buckets,
+                "summary": summarise(buckets),
+                "unit": (state.attributes.get("unit_of_measurement") if state else None) or "",
+            })
+
+        # Whatever the layout configures, sent once so the page has something
+        # to draw before anyone touches a range button.
+        for page in layout.get("pages") or []:
+            for widget in page.get("widgets") or []:
+                if widget.get("type") == "history":
+                    await send_history(
+                        str(widget.get("entity_id", "")),
+                        str(widget.get("history_range", "24h")),
+                    )
+
         @callback
         def state_changed(event) -> None:
             state = event.data.get("new_state")
@@ -203,6 +280,11 @@ class PanelWebSocketView(HomeAssistantView):
                 data = {}
                 try:
                     data = message.json()
+                    if data.get("type") == "history_request":
+                        await send_history(
+                            str(data.get("entity_id", "")), str(data.get("range", "24h")),
+                        )
+                        continue
                     if data.get("type") == "schedule_upsert":
                         await schedules.async_upsert(dict(data.get("schedule") or {}), entities)
                         await socket.send_json({"type": "schedules", "schedules": schedules.list_for(entities)})

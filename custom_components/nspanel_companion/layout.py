@@ -5,7 +5,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor", "camera"}
+SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor", "camera", "history"}
+# The spans a history page offers, and the number of bars each is reduced
+# to. Section 7 asks for 24 to 48 flat rectangles, so every span lands in
+# that band: the panel is handed buckets, never raw states.
+HISTORY_RANGES = {"6h": 24, "24h": 48, "7d": 28, "30d": 30}
 CONTROL_ICONS = {
     "auto", "light", "ceiling-light", "floor-lamp", "wall-light", "led-strip", "spotlight",
     "fan", "ceiling-fan", "ventilation", "power", "switch", "plug", "socket", "curtains", "cover",
@@ -92,6 +96,13 @@ def validate_layout(value: Any) -> dict[str, Any]:
                     gradual_script = widget.get(script_field)
                     if gradual_script is not None and (not ENTITY_ID.fullmatch(str(gradual_script)) or not str(gradual_script).startswith("script.")):
                         raise ValueError(f"{script_field} must be a script entity")
+            if widget.get("type") == "history":
+                history_range = str(widget.get("history_range", "24h"))
+                if history_range not in HISTORY_RANGES:
+                    raise ValueError("Invalid history range")
+                widget["history_range"] = history_range
+                if not ENTITY_ID.fullmatch(str(widget.get("entity_id", ""))):
+                    raise ValueError("A history widget needs an entity")
             if widget.get("type") == "camera":
                 # tap_action offered fullscreen, which a full-bleed camera
                 # page already is. The only choice that meant anything was
