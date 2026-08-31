@@ -12,6 +12,7 @@ from homeassistant.core import callback
 
 from .pairing import PairingManager
 from .history import RANGE_BUCKETS, bucket, bucket_bounds, summarise
+from .intercom import enabled_for, visible_layout
 from .const import DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .registry import PanelRegistry
 from .permissions import allowed_entity_ids, service_allowed
@@ -74,7 +75,8 @@ class PanelSyncView(HomeAssistantView):
             registry = self._registry()
             record = registry.heartbeat(panel_id, token, data)
             current_revision = str(data.get("layout_revision", ""))
-            layout = record.get("layout") if record.get("layout_revision") != current_revision else None
+            stored = record.get("layout") if record.get("layout_revision") != current_revision else None
+            layout = visible_layout(stored) if stored else None
             return web.json_response({
                 "panel_id": panel_id,
                 "panel_name": record.get("name"),
@@ -107,7 +109,7 @@ class PanelWebSocketView(HomeAssistantView):
         registry = self._registry()
         if not registry.authenticate(panel_id, token):
             return web.json_response({"error": "Invalid panel credentials"}, status=401)
-        layout = registry.layout(panel_id) or {}
+        layout = visible_layout(registry.layout(panel_id) or {})
         entities = allowed_entity_ids(layout, self._hass.states.async_entity_ids())
         doorbell_config = layout.get("doorbell") or {}
         socket = web.WebSocketResponse(heartbeat=20)
