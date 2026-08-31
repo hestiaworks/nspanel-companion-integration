@@ -6,10 +6,9 @@ import re
 from typing import Any
 
 SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor", "camera", "history"}
-# The spans a history page offers, and the number of bars each is reduced
-# to. Section 7 asks for 24 to 48 flat rectangles, so every span lands in
-# that band: the panel is handed buckets, never raw states.
-HISTORY_RANGES = {"6h": 24, "24h": 48, "7d": 28, "30d": 30}
+# The spans a history page offers. How many bars each becomes is history.py's
+# business; this only decides what a layout may ask for.
+HISTORY_RANGES = {"6h", "24h", "7d", "30d"}
 CONTROL_ICONS = {
     "auto", "light", "ceiling-light", "floor-lamp", "wall-light", "led-strip", "spotlight",
     "fan", "ceiling-fan", "ventilation", "power", "switch", "plug", "socket", "curtains", "cover",

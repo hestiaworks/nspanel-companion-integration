@@ -14,10 +14,14 @@ SPEC.loader.exec_module(history)
 class BucketTest(unittest.TestCase):
     now = 1_000_000.0
 
-    def test_every_span_lands_in_the_range_the_spec_draws(self):
-        # 24 to 48 flat rectangles, whatever the span.
+    def test_each_span_is_reduced_to_the_bars_its_page_draws(self):
+        # The prose says 24 to 48 rectangles, and the short spans keep that
+        # dense row. A week is drawn as seven wide bars labelled by weekday
+        # instead — you can point at a day, which is the whole use of it.
+        self.assertEqual(7, history.RANGE_BUCKETS["7d"])
+        for span in ("6h", "24h", "30d"):
+            self.assertTrue(24 <= history.RANGE_BUCKETS[span] <= 48)
         for span, count in history.RANGE_BUCKETS.items():
-            self.assertTrue(24 <= count <= 48, f"{span} asks for {count}")
             self.assertEqual(count, len(history.bucket([], span, self.now)))
 
     def test_samples_land_in_the_bucket_their_time_falls_in(self):

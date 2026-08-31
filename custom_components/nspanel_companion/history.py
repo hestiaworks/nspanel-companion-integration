@@ -18,7 +18,10 @@ from datetime import datetime, timedelta
 from typing import Any
 
 RANGE_SECONDS = {"6h": 6 * 3600, "24h": 24 * 3600, "7d": 7 * 86400, "30d": 30 * 86400}
-RANGE_BUCKETS = {"6h": 24, "24h": 48, "7d": 28, "30d": 30}
+# One bar per day at 7d, which is what the design draws: seven wide bars
+# labelled by weekday, not twenty-eight thin ones nobody can point at. The
+# shorter spans keep the dense row the prose describes.
+RANGE_BUCKETS = {"6h": 24, "24h": 48, "7d": 7, "30d": 30}
 
 
 def bucket_bounds(span: str, now: float) -> tuple[float, float, float]:
