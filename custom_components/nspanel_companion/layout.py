@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+RING_SOUNDS = {"off", "chime", "bell", "ping"}
+
 SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor", "camera", "history", "intercom"}
 # The spans a history page offers. How many bars each becomes is history.py's
 # business; this only decides what a layout may ask for.
@@ -155,6 +157,18 @@ def validate_layout(value: Any) -> dict[str, Any]:
         auto_close_ms = int(doorbell.get("auto_close_ms", 60000))
         if not 10000 <= auto_close_ms <= 300000:
             raise ValueError("Doorbell timeout must be 10–300 seconds")
+        chime = str(doorbell.get("chime", "off")).strip() or "off"
+        if chime not in RING_SOUNDS:
+            raise ValueError("Invalid doorbell chime")
+        chime_volume = int(doorbell.get("chime_volume", 70))
+        if not 0 <= chime_volume <= 100:
+            raise ValueError("Doorbell chime volume must be 0–100")
+        # A percentage applied to the captured samples, because Android has
+        # no way to set the microphone's own gain. Capped where clipping
+        # stops being occasional and becomes the sound.
+        talkback_gain = int(doorbell.get("talkback_gain", 100))
+        if not 50 <= talkback_gain <= 300:
+            raise ValueError("Talkback gain must be 50–300 percent")
         talk_extend_enabled = bool(doorbell.get("talk_extend_enabled", True))
         talk_extend_ms = int(doorbell.get("talk_extend_ms", 15000))
         if not 5000 <= talk_extend_ms <= 60000:
@@ -169,6 +183,9 @@ def validate_layout(value: Any) -> dict[str, Any]:
             "scrypted_bridge_id": scrypted_bridge_id,
             "scrypted_doorbell_id": scrypted_doorbell_id,
             "quiet_mode": bool(doorbell.get("quiet_mode", False)),
+            "chime": chime,
+            "chime_volume": chime_volume,
+            "talkback_gain": talkback_gain,
             "auto_close_ms": auto_close_ms,
             "talk_extend_enabled": talk_extend_enabled,
             "talk_extend_ms": talk_extend_ms,
@@ -192,7 +209,25 @@ def validate_layout(value: Any) -> dict[str, Any]:
     intercom = value.get("intercom")
     if intercom is not None and not isinstance(intercom, dict):
         raise ValueError("Intercom configuration must be an object")
-    normalized["intercom"] = {"enabled": bool((intercom or {}).get("enabled", False))}
+    intercom = intercom or {}
+    ring = str(intercom.get("ring", "off")).strip() or "off"
+    if ring not in RING_SOUNDS:
+        raise ValueError("Invalid intercom ring")
+    ring_volume = int(intercom.get("ring_volume", 70))
+    if not 0 <= ring_volume <= 100:
+        raise ValueError("Intercom ring volume must be 0–100")
+    normalized["intercom"] = {
+        "enabled": bool(intercom.get("enabled", False)),
+        "ring": ring,
+        "ring_volume": ring_volume,
+        # Both default on, matching what libwebrtc does when asked for
+        # nothing, so a layout written before these existed is unchanged by
+        # them. The panel has no platform audio effects at all — these are
+        # WebRTC's own software processing, and the only ones that do
+        # anything here.
+        "noise_suppression": bool(intercom.get("noise_suppression", True)),
+        "auto_gain": bool(intercom.get("auto_gain", True)),
+    }
     normalized["nav_bar_mode"] = nav_bar_mode
     normalized["hide_accessibility_button"] = bool(
         value.get("hide_accessibility_button", False)

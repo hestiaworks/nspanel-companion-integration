@@ -255,6 +255,9 @@ class PanelWebSocketView(HomeAssistantView):
                         "talkback_url": doorbell_config.get("talkback_url", ""),
                         "talkback_key": doorbell_config.get("talkback_key", ""),
                         "quiet_mode": doorbell_config.get("quiet_mode", False),
+                        "chime": doorbell_config.get("chime", "off"),
+                        "chime_volume": doorbell_config.get("chime_volume", 70),
+                        "talkback_gain": doorbell_config.get("talkback_gain", 100),
                         "auto_close_ms": doorbell_config.get("auto_close_ms", 60000),
                         "talk_extend_ms": doorbell_config.get("talk_extend_ms", 15000) if doorbell_config.get("talk_extend_enabled", True) else 0,
                     },
@@ -334,11 +337,14 @@ class PanelWebSocketView(HomeAssistantView):
                              if r["panel_id"] == panel_id),
                             panel_id,
                         )
+                        callee_intercom = (registry.layout(callee) or {}).get("intercom") or {}
                         await tell(callee, {
                             "type": "intercom_ring",
                             "call_id": call_id,
                             "panel_id": panel_id,
                             "name": caller_name or panel_id,
+                            "ring": callee_intercom.get("ring", "off"),
+                            "ring_volume": callee_intercom.get("ring_volume", 70),
                         })
                         await socket.send_json({"type": "intercom_calling", "call_id": call_id})
                         continue

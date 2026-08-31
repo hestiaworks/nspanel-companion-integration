@@ -332,7 +332,7 @@ class LayoutValidationTest(unittest.TestCase):
                 **extra,
             })
 
-        self.assertEqual({"enabled": False}, panel()["intercom"])
+        self.assertIs(False, panel()["intercom"]["enabled"])
         self.assertTrue(panel(intercom={"enabled": True})["intercom"]["enabled"])
         with self.assertRaisesRegex(ValueError, "Intercom"):
             panel(intercom="yes")
@@ -349,3 +349,57 @@ class LayoutValidationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AudioSettingsTest(unittest.TestCase):
+    """Ring sounds, and the two microphone settings that are real.
+
+    Sound is off by default on both. A panel that has been quietly on a wall
+    for weeks must not start making noise because it was updated.
+    """
+
+    def base(self, **extra):
+        return {"schema_version": 1, "revision": "audio-1",
+                "pages": [{"id": "m", "widgets": [{"type": "weather"}]}], **extra}
+
+    def test_a_panel_that_was_never_configured_stays_silent(self):
+        value = layout_module.validate_layout(self.base(
+            doorbell={"trigger_entity_id": "binary_sensor.bell"},
+            intercom={"enabled": True},
+        ))
+        self.assertEqual("off", value["doorbell"]["chime"])
+        self.assertEqual("off", value["intercom"]["ring"])
+
+    def test_it_keeps_the_chosen_sound_and_volume(self):
+        value = layout_module.validate_layout(self.base(
+            doorbell={"trigger_entity_id": "binary_sensor.bell",
+                      "chime": "bell", "chime_volume": 40},
+            intercom={"enabled": True, "ring": "ping", "ring_volume": 90},
+        ))
+        self.assertEqual(("bell", 40), (value["doorbell"]["chime"], value["doorbell"]["chime_volume"]))
+        self.assertEqual(("ping", 90), (value["intercom"]["ring"], value["intercom"]["ring_volume"]))
+
+    def test_it_refuses_a_sound_the_panel_does_not_carry(self):
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(self.base(
+                intercom={"enabled": True, "ring": "foghorn"}))
+
+    def test_it_refuses_a_volume_off_the_scale(self):
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(self.base(
+                intercom={"enabled": True, "ring_volume": 140}))
+
+    def test_processing_defaults_match_what_webrtc_already_does(self):
+        # Both on: these mirror libwebrtc's own defaults, so a layout written
+        # before these settings existed behaves exactly as it did.
+        value = layout_module.validate_layout(self.base(intercom={"enabled": True}))
+        self.assertIs(True, value["intercom"]["noise_suppression"])
+        self.assertIs(True, value["intercom"]["auto_gain"])
+
+    def test_talkback_gain_is_a_percentage_within_reason(self):
+        value = layout_module.validate_layout(self.base(
+            doorbell={"trigger_entity_id": "binary_sensor.bell", "talkback_gain": 180}))
+        self.assertEqual(180, value["doorbell"]["talkback_gain"])
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(self.base(
+                doorbell={"trigger_entity_id": "binary_sensor.bell", "talkback_gain": 900}))

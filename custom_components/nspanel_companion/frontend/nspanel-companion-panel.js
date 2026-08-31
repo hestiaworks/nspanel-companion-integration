@@ -1,3 +1,12 @@
+// What the panel carries. Adding one here means adding the file to the app
+// as well: the panel can only play a sound it was built with.
+const RING_SOUNDS = [
+  { value: "off", label: "No sound" },
+  { value: "chime", label: "Chime" },
+  { value: "bell", label: "Bell" },
+  { value: "ping", label: "Ping" },
+];
+
 const DEFAULT_LAYOUT = (revision) => ({
   schema_version: 1,
   revision,
@@ -339,7 +348,13 @@ class NSPanelCompanionPanel extends HTMLElement {
       hide_accessibility_button: values.get("hide_accessibility_button") === "on",
       wake_on_approach: values.get("wake_on_approach") === "on",
       wake_sensitivity: String(values.get("wake_sensitivity") || "medium"),
-      intercom: { enabled: values.get("intercom_enabled") === "on" },
+      intercom: {
+        enabled: values.get("intercom_enabled") === "on",
+        ring: String(values.get("intercom_ring") || "off"),
+        ring_volume: Number(values.get("intercom_ring_volume") ?? 70),
+        noise_suppression: values.get("intercom_noise_suppression") === "on",
+        auto_gain: values.get("intercom_auto_gain") === "on",
+      },
     };
     if (!name || !this.editor) return;
     this.busy = true; this.error = "";
@@ -607,6 +622,9 @@ class NSPanelCompanionPanel extends HTMLElement {
         scrypted_bridge_id: scryptedDoorbell ? scryptedBridgeId : "",
         scrypted_doorbell_id: scryptedDoorbellId,
         quiet_mode: values.get("quiet_mode") === "on",
+        chime: String(values.get("chime") || "off"),
+        chime_volume: Number(values.get("chime_volume") ?? 70),
+        talkback_gain: Number(values.get("talkback_gain") ?? 100),
         auto_close_ms: Number(values.get("auto_close_seconds") || 60) * 1000,
         talk_extend_enabled: values.get("talk_extend_enabled") === "on",
         talk_extend_ms: Number(values.get("talk_extend_seconds") || 15) * 1000,
@@ -1233,7 +1251,12 @@ class NSPanelCompanionPanel extends HTMLElement {
           <label>Panel theme<select name="theme_mode"><option value="inherit" ${this.editor.draftThemeMode === "inherit" ? "selected" : ""}>Auto · inherit Home Assistant</option><option value="light" ${this.editor.draftThemeMode === "light" ? "selected" : ""}>Light</option><option value="dark" ${this.editor.draftThemeMode === "dark" ? "selected" : ""}>Dark</option></select><small>Auto resolves the active Home Assistant light/dark appearance when the dashboard is published. Explicit Light or Dark stays fixed.</small></label>
           <fieldset class="dashboard-behavior"><legend>Dashboard behavior</legend><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>When disabled, the panel follows its Android display timeout.</small><label class="check"><input name="wake_on_approach" type="checkbox" ${layout.wake_on_approach ? "checked" : ""}> Wake the display when someone approaches</label><small>Uses the panel's proximity sensor. Ignored while the display is set to stay on.</small><label>Wake sensitivity<select name="wake_sensitivity"><option value="high" ${String(layout.wake_sensitivity || "medium") === "high" ? "selected" : ""}>High &middot; from across the room</option><option value="medium" ${String(layout.wake_sensitivity || "medium") === "medium" ? "selected" : ""}>Medium</option><option value="low" ${String(layout.wake_sensitivity || "medium") === "low" ? "selected" : ""}>Low &middot; only up close</option></select><small>The sensor measures reflected light, so a lighter wall or a shelf in front of the panel reads closer. Lower the sensitivity if it wakes on its own.</small></label><label class="check"><input name="show_clock" type="checkbox" ${layout.show_clock !== false ? "checked" : ""}> Show Home Assistant time</label><label class="check"><input name="show_mic_indicator" type="checkbox" ${layout.show_mic_indicator !== false ? "checked" : ""}> Show microphone privacy indicator</label><label>Keep microphone indicator green after use<input name="mic_indicator_linger_seconds" type="number" min="0" max="60" value="${Number(layout.mic_indicator_linger_seconds ?? 15)}"><small>Seconds; use 0 to show green only during active capture.</small></label></fieldset>
           <fieldset class="system-ui"><legend>Android system UI</legend><label>Navigation bar<select name="nav_bar_mode"><option value="listener" ${String(layout.nav_bar_mode || "listener") === "listener" ? "selected" : ""}>Hide, and re-hide when Android shows it</option><option value="immersive" ${String(layout.nav_bar_mode || "listener") === "immersive" ? "selected" : ""}>Suppress entirely (recommended)</option><option value="visible" ${String(layout.nav_bar_mode || "listener") === "visible" ? "selected" : ""}>Leave visible</option></select><small>Re-hiding lets the bar appear for a moment whenever a long press or an edge swipe summons it. Suppressing it stops Android summoning it at all.</small></label><label class="check"><input name="hide_accessibility_button" type="checkbox" ${layout.hide_accessibility_button ? "checked" : ""}> Hide the panel's floating back button</label><small>Suppressing the navigation bar and hiding the back button both need a system permission the updater add-on grants when it installs the app. If the panel has not been updated since this setting appeared, update it once and these will take effect.</small></fieldset>
-          <fieldset class="system-ui"><legend>Intercom</legend><label class="check"><input name="intercom_enabled" type="checkbox" ${layout.intercom?.enabled ? "checked" : ""}> Take part in the panel intercom</label><small>Two-way audio with your other panels, no camera. A panel with this off is not listed on other panels, cannot be called, and will not ring &mdash; and its intercom pages are not sent to it.</small></fieldset>
+          <fieldset class="system-ui"><legend>Intercom</legend><label class="check"><input name="intercom_enabled" type="checkbox" ${layout.intercom?.enabled ? "checked" : ""}> Take part in the panel intercom</label><small>Two-way audio with your other panels, no camera. A panel with this off is not listed on other panels, cannot be called, and will not ring &mdash; and its intercom pages are not sent to it.</small>
+            <label>Ring sound<select name="intercom_ring">${RING_SOUNDS.map((sound) => `<option value="${sound.value}" ${(layout.intercom?.ring || "off") === sound.value ? "selected" : ""}>${sound.label}</option>`).join("")}</select></label>
+            <label>Ring volume<input name="intercom_ring_volume" type="number" min="0" max="100" value="${Number(layout.intercom?.ring_volume ?? 70)}"></label>
+            <label class="check"><input name="intercom_noise_suppression" type="checkbox" ${layout.intercom?.noise_suppression !== false ? "checked" : ""}> Noise suppression</label>
+            <label class="check"><input name="intercom_auto_gain" type="checkbox" ${layout.intercom?.auto_gain !== false ? "checked" : ""}> Automatic gain</label>
+            <small>This panel has no audio effects of its own, so both are done in software by WebRTC. Turning them off is worth trying only if a call sounds processed or the far end cuts in and out.</small></fieldset>
           <label>Stable device ID<input value="${escapeHtml(panel.device_id)}" readonly></label>
           <dl><div><dt>Connection</dt><dd>${panel.revoked ? "Revoked" : online ? "Online" : "Offline"}</dd></div><div><dt>Registered</dt><dd>${formatDate(panel.created_at)}</dd></div><div><dt>App version</dt><dd>${escapeHtml(panel.app_version || "—")}</dd></div></dl>
           <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save general settings</button><button type="button" data-restart-panel ${this.busy ? "disabled" : ""}>Restart app</button><button type="button" data-reboot-panel ${this.busy ? "disabled" : ""}>Reboot panel</button></div>
@@ -1267,6 +1290,11 @@ class NSPanelCompanionPanel extends HTMLElement {
             <label class="check"><input name="talk_extend_enabled" type="checkbox" ${doorbell.talk_extend_enabled !== false ? "checked" : ""}> Extend timeout after hold-to-talk</label>
             <label>Talk extension<input name="talk_extend_seconds" type="number" min="5" max="60" value="${Number(doorbell.talk_extend_ms || 15000) / 1000}"><small>Add 5–60 seconds to the remaining time after each completed hold-to-talk interaction.</small></label>
             <label class="check"><input name="quiet_mode" type="checkbox" ${doorbell.quiet_mode ? "checked" : ""}> Start with incoming audio muted</label>
+            <label>Chime<select name="chime">${RING_SOUNDS.map((sound) => `<option value="${sound.value}" ${(doorbell.chime || "off") === sound.value ? "selected" : ""}>${sound.label}</option>`).join("")}</select></label>
+            <label>Chime volume<input name="chime_volume" type="number" min="0" max="100" value="${Number(doorbell.chime_volume ?? 70)}"></label>
+            <small>The chime does not play while incoming audio is muted above.</small>
+            <label>Talkback microphone gain<input name="talkback_gain" type="number" min="50" max="300" value="${Number(doorbell.talkback_gain ?? 100)}"> %</label>
+            <small>Android does not let an app set the microphone's gain, so this scales the captured sound instead. Above about 200% a raised voice will clip.</small>
           </fieldset>
           <div class="actions"><button data-test-doorbell="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Test doorbell</button><button data-close-editor type="button">Cancel</button><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Publish to panel</button></div>
         </section>
