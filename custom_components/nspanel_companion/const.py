@@ -8,6 +8,8 @@ DATA_PAIRINGS = "pairings"
 # to restart directly; one that does not is exactly the case the add-on's
 # ADB path exists for.
 DATA_PANEL_SOCKETS = "panel_sockets"
+# One call book for the whole integration: who is in a call with whom.
+DATA_CALL_BOOK = "call_book"
 DATA_SCRYPTED_DISCOVERY = "scrypted_discovery"
 DATA_PANEL_DISCOVERY = "panel_discovery"
 STORAGE_KEY = f"{DOMAIN}.panels"
