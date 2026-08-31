@@ -12,7 +12,7 @@ from homeassistant.core import callback
 
 from .pairing import PairingManager
 from .history import RANGE_BUCKETS, bucket, bucket_bounds, summarise
-from .intercom import CallBook, enabled_for, visible_layout
+from .intercom import CallBook, enabled_for, roster_audience, visible_layout
 from .const import DATA_CALL_BOOK, DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .registry import PanelRegistry
 from .permissions import allowed_entity_ids, service_allowed
@@ -279,8 +279,8 @@ class PanelWebSocketView(HomeAssistantView):
             DATA_CALL_BOOK, CallBook(),
         )
 
-        def intercom_roster() -> list[dict]:
-            """Every panel this one could call, as the call book sees them."""
+        def intercom_known() -> list[dict]:
+            """Every registered panel, with whether it is opted in and online."""
             known = []
             for record in registry.list_public():
                 other_id = record["panel_id"]
@@ -290,19 +290,32 @@ class PanelWebSocketView(HomeAssistantView):
                     "enabled": enabled_for(registry.layout(other_id) or {}),
                     "connected": other_id in sockets,
                 })
-            return book.roster(known, viewer=panel_id)
+            return known
 
-        async def send_roster() -> None:
-            if socket.closed or not enabled_for(layout):
-                return
-            await socket.send_json({"type": "intercom_roster", "panels": intercom_roster()})
+        async def send_roster_to_all(departed: str | None = None) -> None:
+            """Re-send every online panel its own view of who it may call.
+
+            A panel arriving or leaving changes the list every other panel
+            holds, so all of them are told, not just the one whose socket
+            moved. Each gets its own roster because the list excludes its
+            own entry.
+            """
+            known = intercom_known()
+            for viewer in roster_audience(known, departed):
+                target = sockets.get(viewer)
+                if target is None or target.closed:
+                    continue
+                await target.send_json({
+                    "type": "intercom_roster",
+                    "panels": book.roster(known, viewer=viewer),
+                })
 
         async def tell(target: str, payload: dict) -> None:
             other = sockets.get(target)
             if other is not None and not other.closed:
                 await other.send_json(payload)
 
-        await send_roster()
+        await send_roster_to_all()
         try:
             async for message in socket:
                 if message.type != WSMsgType.TEXT:
@@ -402,6 +415,9 @@ class PanelWebSocketView(HomeAssistantView):
                     self._hass.async_create_task(
                         other.send_json({"type": "intercom_end", "call_id": ""}),
                     )
+            # And everyone still online is told it has gone, so a panel that
+            # is no longer there stops being offered as something to call.
+            self._hass.async_create_task(send_roster_to_all(departed=panel_id))
         return socket
 
 

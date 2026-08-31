@@ -119,3 +119,25 @@ class CallBookTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RosterAudienceTest(unittest.TestCase):
+    """Who has to be re-told after a panel arrives or leaves.
+
+    A roster sent only to the panel that just connected leaves everyone
+    already online holding the list from before it existed — which is how
+    one panel could see the other and not be seen back.
+    """
+
+    PANELS = [
+        {"panel_id": "a", "enabled": True, "connected": True},
+        {"panel_id": "b", "enabled": True, "connected": True},
+        {"panel_id": "off", "enabled": False, "connected": True},
+        {"panel_id": "away", "enabled": True, "connected": False},
+    ]
+
+    def test_everyone_online_and_opted_in_is_re_told(self):
+        self.assertEqual(["a", "b"], intercom.roster_audience(self.PANELS))
+
+    def test_a_departing_panel_is_not_told_about_its_own_departure(self):
+        self.assertEqual(["a"], intercom.roster_audience(self.PANELS, departed="b"))

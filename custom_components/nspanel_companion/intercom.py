@@ -46,6 +46,26 @@ def visible_layout(layout: dict[str, Any]) -> dict[str, Any]:
     return visible
 
 
+def roster_audience(
+    panels: list[dict[str, Any]], departed: str | None = None,
+) -> list[str]:
+    """Every panel that must be re-sent its roster after one arrives or leaves.
+
+    Membership is a fact about the whole group, not about the panel whose
+    socket happened to change: a roster sent only to the arriving panel
+    leaves everyone already online holding the list from before it existed.
+    The panel that just left is excluded because there is nothing to send
+    it down.
+    """
+    return [
+        panel["panel_id"]
+        for panel in panels
+        if panel.get("enabled")
+        and panel.get("connected")
+        and panel["panel_id"] != departed
+    ]
+
+
 class CallBook:
     """Who may be called, and who is in a call with whom.
 
