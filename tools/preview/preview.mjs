@@ -57,6 +57,9 @@ writeFileSync(join(work, "harness.html"), `<!doctype html>
   const el = document.createElement("nspanel-companion-panel");
   ${light ? 'el.classList.add("light");' : ""}
   document.getElementById("host").appendChild(el);
+  const failures = [];
+  window.addEventListener("error", (event) => failures.push(event.message));
+  window.addEventListener("unhandledrejection", (event) => failures.push(String(event.reason)));
   el.hass = fakeHass();
   ${click === null ? "" : `
   await new Promise((done) => setTimeout(done, 400));
@@ -65,6 +68,13 @@ writeFileSync(join(work, "harness.html"), `<!doctype html>
   await new Promise((done) => setTimeout(done, 400));
   const slot = el.shadowRoot.querySelector('[data-select-widget="${select}"]');
   if (slot) slot.click();`}
+  await new Promise((done) => setTimeout(done, 250));
+  if (failures.length || !el.shadowRoot?.querySelector("main, .editor")) {
+    document.body.innerHTML =
+      '<pre style="color:#D24A3F;font:14px monospace;padding:24px;white-space:pre-wrap">'
+      + (failures.join("\\n") || "nothing rendered") + '</pre>';
+    document.title = "RENDER FAILED";
+  }
 </script>`);
 
 // Served over http rather than opened as a file: Chrome refuses ES module
