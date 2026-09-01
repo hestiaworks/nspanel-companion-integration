@@ -73,6 +73,11 @@ writeFileSync(join(work, "harness.html"), `<!doctype html>
   el.shadowRoot.querySelector(${JSON.stringify(opt("open", ""))})?.setAttribute("open", "");
   await new Promise((done) => setTimeout(done, 300));`}
   await new Promise((done) => setTimeout(done, 250));
+  if (window.__published) {
+    const layout = window.__published.layout || {};
+    document.title = "PUBLISHED " + (layout.pages || []).length + " pages, doorbell trigger="
+      + JSON.stringify(layout.doorbell?.trigger_entity_id ?? null);
+  }
   if (failures.length || !el.shadowRoot?.querySelector("main, .editor")) {
     document.body.innerHTML =
       '<pre style="color:#D24A3F;font:14px monospace;padding:24px;white-space:pre-wrap">'

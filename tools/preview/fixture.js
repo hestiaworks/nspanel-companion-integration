@@ -21,8 +21,11 @@ export const PANELS = [
         { type: "entity_button", entity_id: "cover.living_blinds", label: "Living room blinds", icon: "cover" },
         { type: "entity_button", entity_id: "switch.desk_monitor", label: "Desk monitor", icon: "plug" },
       ] },
-      { id: "door", title: "Front door", widgets: [{ type: "camera", stream_name: "doorbell" }] },
-    ] },
+      { id: "door", title: "Front door", widgets: [{ type: "camera", stream_name: "doorbell", scrypted_bridge_id: "front-door", scrypted_camera_id: "front-door-cam" }] },
+    ],
+      doorbell: { enabled: true, trigger_entity_id: "binary_sensor.front_door_visitor",
+        scrypted_bridge_id: "front-door", scrypted_doorbell_id: "front-door-cam",
+        auto_close_ms: 60000, chime: "chime_1", chime_volume: 70 } },
     last_seen: new Date(Date.now() - 12_000).toISOString(),
   },
   {
@@ -73,6 +76,11 @@ export function fakeHass() {
     themes: {},
     connection: {
       sendMessagePromise: async (message) => {
+        if (message.type === "nspanel_companion/layout/set") {
+          window.__published = message;
+          return { ok: true };
+        }
+        if (message.type === "nspanel_companion/panels/rename") return { panel: {} };
         if (message.type === "nspanel_companion/layout/get") {
           const panel = PANELS.find((item) => item.panel_id === message.panel_id);
           return panel?.layout ?? { schema_version: 1, revision: 0, pages: [] };

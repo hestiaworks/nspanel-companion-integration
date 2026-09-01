@@ -389,10 +389,10 @@ class NSPanelCompanionPanel extends HTMLElement {
    * this is two calls; it is one button because that is one intention.
    */
   async saveWorkspace() {
+    this.captureWorkspaceForm();
     const general = this.shadowRoot.querySelector("#panel-general");
-    const layoutForm = this.shadowRoot.querySelector("#layout-editor");
     if (general) await this.renamePanel(general);
-    if (!this.error && layoutForm) await this.saveEditor(layoutForm);
+    if (!this.error) await this.saveEditor(this.shadowRoot.querySelector("#layout-editor"));
     if (!this.error) {
       this.editor.dirty = new Set();
       this.render();
@@ -500,8 +500,34 @@ class NSPanelCompanionPanel extends HTMLElement {
     } finally { this.busy = false; this.render(); }
   }
 
+  /**
+   * Remember the settings forms, because the page editor does not render them.
+   *
+   * §7 says the save bar is the only thing that writes, and it is present on
+   * every workspace screen — but the doorbell and dashboard fields only exist
+   * on their own tabs. Without this, Save from the page editor found no form
+   * and quietly did nothing.
+   *
+   * Checkbox semantics are FormData's: an unticked box is absent, not false.
+   */
+  captureWorkspaceForm() {
+    if (!this.editor) return;
+    const form = this.shadowRoot.querySelector("#layout-editor");
+    if (!form) return;
+    const values = {};
+    new FormData(form).forEach((value, key) => { values[key] = value; });
+    this.editor.formValues = values;
+    const general = this.shadowRoot.querySelector("#panel-general");
+    if (general) {
+      const named = new FormData(general);
+      named.forEach((value, key) => { values[key] = value; });
+      this.editor.panelName = String(named.get("panel_name") || this.editor.panel.name);
+    }
+  }
+
   syncPageDraftFromDom() {
     if (!this.editor) return;
+    this.captureWorkspaceForm();
     this.shadowRoot.querySelectorAll("[data-page-title]").forEach((input) => {
       const index = Number(input.dataset.pageTitle);
       if (this.editor.draftPages[index]) this.editor.draftPages[index].title = input.value.trim();
@@ -680,7 +706,16 @@ class NSPanelCompanionPanel extends HTMLElement {
 
   async saveEditor(form) {
     this.syncPageDraftFromDom();
-    const values = new FormData(form);
+    // The doorbell block below is built entirely from these values, so an
+    // empty set would publish an empty doorbell. That happens when someone
+    // opens the page editor directly and never renders the doorbell tab —
+    // in which case they cannot have edited it, and the published layout
+    // keeps what it already had.
+    const captured = form ? null : this.editor?.formValues;
+    const untouched = !form && !captured;
+    const values = form
+      ? new FormData(form)
+      : new Map(Object.entries(captured || {}));
     const scryptedDoorbell = String(values.get("scrypted_doorbell") || "");
     const [scryptedBridgeId, ...scryptedDeviceParts] = scryptedDoorbell.split("|");
     const scryptedDoorbellId = scryptedDoorbell ? scryptedDeviceParts.join("|") : "";
@@ -734,7 +769,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       theme_mode: this.editor.draftThemeMode,
       theme_dark: this.editor.draftThemeMode === "dark" || this.editor.draftThemeMode === "inherit" && Boolean(this._hass?.themes?.darkMode),
       pages,
-      doorbell: {
+      doorbell: untouched ? { ...(this.editor.layout.doorbell || {}) } : {
         enabled: values.get("doorbell_enabled") === "on",
         trigger_entity_id: String(values.get("doorbell_trigger") || ""),
         stream_base_url: String(values.get("stream_base_url") || "").trim(),
@@ -753,7 +788,8 @@ class NSPanelCompanionPanel extends HTMLElement {
       },
     };
     this.busy = true; this.error = "";
-    const saveButtons = [...form.querySelectorAll("button")];
+    const saveButtons = [...(form ? form.querySelectorAll("button") : []),
+      ...this.shadowRoot.querySelectorAll("#save-workspace, #revert-workspace")];
     saveButtons.forEach((button) => { button.disabled = true; });
     try {
       await this.call({ type: "nspanel_companion/layout/set", panel_id: this.editor.panel.panel_id, layout });

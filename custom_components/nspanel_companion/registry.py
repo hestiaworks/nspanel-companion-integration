@@ -519,7 +519,7 @@ class PanelRegistry:
         """
         public = {key: value for key, value in record.items() if key not in {"token_hash", "layout", "diagnostics"}}
         layout = record.get("layout") or {}
-        public["layout_revision"] = layout.get("revision")
+        public.setdefault("layout_revision", layout.get("revision"))
         public["page_count"] = len(layout.get("pages") or [])
         public["events"] = record.get("events") or []
         return public
