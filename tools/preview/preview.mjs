@@ -67,7 +67,11 @@ writeFileSync(join(work, "harness.html"), `<!doctype html>
   ${select === null ? "" : `
   await new Promise((done) => setTimeout(done, 400));
   const slot = el.shadowRoot.querySelector('[data-select-widget="${select}"]');
-  if (slot) slot.click();`}
+  if (slot) slot.click();
+  await new Promise((done) => setTimeout(done, 300));`}
+  ${opt("open", null) === null ? "" : `
+  el.shadowRoot.querySelector(${JSON.stringify(opt("open", ""))})?.setAttribute("open", "");
+  await new Promise((done) => setTimeout(done, 300));`}
   await new Promise((done) => setTimeout(done, 250));
   if (failures.length || !el.shadowRoot?.querySelector("main, .editor")) {
     document.body.innerHTML =

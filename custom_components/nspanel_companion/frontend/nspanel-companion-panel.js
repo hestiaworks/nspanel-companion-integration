@@ -570,9 +570,13 @@ class NSPanelCompanionPanel extends HTMLElement {
   addDraftPage() {
     if (!this.editor || this.editor.draftPages.length >= 8) return;
     this.syncPageDraftFromDom();
+    // The empty state asks for a name before there is anywhere to put one.
+    // The rail's ＋ has no field — the page is created and its title is
+    // edited in the inspector, which is where every other page property is.
     const input = this.shadowRoot.querySelector("#new-page-title");
-    const title = String(input?.value || "").trim();
-    if (!title) { input?.focus(); return; }
+    const typed = String(input?.value || "").trim();
+    if (input && !typed) { input.focus(); return; }
+    const title = typed || "New page";
     const page = { id: this.pageIdFor(title), title: title.slice(0, 48), widgets: [] };
     this.editor.draftPages.push(page);
     this.editor.activePageId = page.id;
@@ -1234,14 +1238,17 @@ class NSPanelCompanionPanel extends HTMLElement {
 
   panelCard(panel) {
     const online = !panel.revoked && panel.last_seen && Date.now() - new Date(panel.last_seen).getTime() < 45000;
+    const known = panel.page_count !== undefined;
     const pageCount = Number(panel.page_count ?? 0);
-    const configured = pageCount > 0;
-    const state = panel.revoked ? "revoked" : !configured ? "unconfigured" : online ? "online" : "offline";
-    const tone = panel.revoked ? "error" : online && configured ? "online" : configured ? "offline" : "waiting";
+    const configured = !known || pageCount > 0;
+    const state = panel.revoked ? "revoked"
+      : known && !pageCount ? "unconfigured"
+      : online ? "online" : "offline";
+    const tone = panel.revoked ? "error" : state === "unconfigured" ? "waiting" : online ? "online" : "offline";
     // The metrics row is what makes a wall of tiles readable at a glance:
     // the same three facts, in the same place, at the same height.
     const metrics = `<div class="metrics">
-      <div><span class="t-label">Pages</span><b>${pageCount}</b></div>
+      <div><span class="t-label">Pages</span><b>${known ? pageCount : "—"}</b></div>
       <div><span class="t-label">Revision</span><b>${panel.layout_revision ?? "—"}</b></div>
       <div><span class="t-label">Last seen</span><b>${panel.last_seen ? escapeHtml(sinceLabel(panel.last_seen)) : "—"}</b></div>
     </div>`;
@@ -1480,7 +1487,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     const pickerKey = `${page.id}-${index}`;
     if (widget.type === "thermostat") configuration = `<label>Climate entity${this.entityPicker(["climate"], entity, "Search thermostats…", field, pickerKey)}</label><small>Heat, cool, auto, dry, and dual set points follow the capabilities reported by this entity.</small>${this.modeChoices(widget, entity, "fan_modes", "Fan speeds", field)}${this.modeChoices(widget, entity, "swing_modes", "Swing positions", field)}`;
     if (widget.type === "weather") configuration = `<div class="widget-fields"><label>Weather entity${this.entityPicker(["weather"], entity, "Search weather entities…", field, pickerKey)}</label><label>Daily forecast<select ${field("forecast_days")}><option value="1" ${Number(widget.forecast_days ?? 5) === 1 ? "selected" : ""}>1 day</option><option value="3" ${Number(widget.forecast_days ?? 5) === 3 ? "selected" : ""}>3 days</option><option value="5" ${Number(widget.forecast_days ?? 5) === 5 ? "selected" : ""}>5 days</option></select></label></div><label class="check"><input type="checkbox" ${field("show_hourly")} ${widget.show_hourly !== false ? "checked" : ""}> Show next-hours forecast</label>`;
-    if (widget.type === "entity_button") configuration = `<label>Control entity${this.entityPicker(["light", "fan", "switch", "input_boolean", "cover"], entity, "Search lights, fans, switches, and covers…", field, pickerKey)}</label><small>The panel automatically uses the correct native control for this entity's capabilities.</small>${this.iconPicker(page, widget, index, field)}<div class="control-checks inline-checks"><label class="check"><input type="checkbox" ${field("show_timer")} ${widget.show_timer !== false ? "checked" : ""}> Show timer</label><label class="check"><input type="checkbox" ${field("show_schedule")} ${widget.show_schedule !== false ? "checked" : ""}> Show schedule</label><label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label><label class="check"><input type="checkbox" ${field("show_fan_speed")} ${widget.show_fan_speed === true ? "checked" : ""}> Show fan speed control</label></div><label>Timer presets in minutes<input ${field("timer_presets")} value="${escapeHtml((widget.timer_presets || [5, 15, 30, 60]).join(", "))}" placeholder="5, 15, 30, 60"><small>Up to four touch-friendly choices.</small></label>${entity.startsWith("cover.") ? `<div class="widget-fields"><label>Gradual open script (optional)${this.entityPicker(["script"], widget.gradual_open_script || widget.gradual_cover_script || null, "Search script entities…", field, `${pickerKey}-gradual-open`, "gradual_open_script")}</label><label>Gradual close script (optional)${this.entityPicker(["script"], widget.gradual_close_script || null, "Search script entities…", field, `${pickerKey}-gradual-close`, "gradual_close_script")}</label></div><small>Each configured script adds its matching action to curtain controls and schedules.</small>` : ""}`;
+    if (widget.type === "entity_button") configuration = `<label>Control entity${this.entityPicker(["light", "fan", "switch", "input_boolean", "cover"], entity, "Search lights, fans, switches, and covers…", field, pickerKey)}</label><small>The panel automatically uses the correct native control for this entity's capabilities.</small>${this.iconPicker(page, widget, index, field)}<div class="control-checks inline-checks"><label class="check"><input type="checkbox" ${field("show_timer")} ${widget.show_timer !== false ? "checked" : ""}> Show timer</label><label class="check"><input type="checkbox" ${field("show_schedule")} ${widget.show_schedule !== false ? "checked" : ""}> Show schedule</label><label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label>${entity.startsWith("fan.") ? `<label class="check"><input type="checkbox" ${field("show_fan_speed")} ${widget.show_fan_speed === true ? "checked" : ""}> Show fan speed control</label>` : ""}</div><label>Timer presets in minutes<input ${field("timer_presets")} value="${escapeHtml((widget.timer_presets || [5, 15, 30, 60]).join(", "))}" placeholder="5, 15, 30, 60"><small>Up to four touch-friendly choices.</small></label>${entity.startsWith("cover.") ? `<div class="widget-fields"><label>Gradual open script (optional)${this.entityPicker(["script"], widget.gradual_open_script || widget.gradual_cover_script || null, "Search script entities…", field, `${pickerKey}-gradual-open`, "gradual_open_script")}</label><label>Gradual close script (optional)${this.entityPicker(["script"], widget.gradual_close_script || null, "Search script entities…", field, `${pickerKey}-gradual-close`, "gradual_close_script")}</label></div><small>Each configured script adds its matching action to curtain controls and schedules.</small>` : ""}`;
     if (widget.type === "sensor") configuration = `<label>Sensor entity${this.entityPicker(["sensor", "binary_sensor"], entity, "Search sensors…", field, pickerKey)}</label>`;
     if (widget.type === "intercom") configuration = this.editor?.layout?.intercom?.enabled
       ? `<small>Lists your other panels. Nothing to configure &mdash; the panel decides who it can call from who else is connected.</small>`
@@ -2454,6 +2461,27 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .new-page > * + * { border-top:1px solid var(--line); }
 .new-page .field { gap:8px; }
 .new-page .actions { display:flex; justify-content:flex-end; }
+
+
+/* 13g ── THE ICON GRID IN A 340 px COLUMN ───────────────────
+   §12 draws it in a sheet with room to spare. In the inspector it
+   has to fit the column: four across, and labels that wrap rather
+   than push the grid past the edge of the pane. */
+
+.inspector .icon-picker { max-width:100%; overflow:hidden; }
+.inspector .icon-grid { grid-template-columns:repeat(4, minmax(0, 1fr)); }
+.inspector .icon-grid label { min-width:0; padding:8px 2px; }
+.inspector .icon-grid label:nth-child(5n) { border-right:1px solid var(--line); }
+.inspector .icon-grid label:nth-child(4n) { border-right:0; }
+.inspector .icon-grid label small { overflow-wrap:anywhere; text-align:center; line-height:1.25; }
+.inspector .icon-search { width:calc(100% - var(--s4)); }
+
+/* 4. A select keeps its own chevron, so it reads as a list to open
+   rather than a text field that will not accept typing. */
+.inspector select, .settings-card select, .workspace-panel fieldset select, .service select {
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238A9299' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 12px center; padding-right:32px;
+}
 
 
 /* 14 ── UTILITIES AND RESPONSIVE ──────────────────────────── */
