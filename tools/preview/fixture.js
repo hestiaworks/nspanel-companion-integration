@@ -3,7 +3,8 @@
 // websocket.py actually return; when one of those changes, change it here too.
 export const PANELS = [
   {
-    panel_id: "8f2a-c401-19bd", name: "Living room", online: true,
+    panel_id: "8f2a-c401-19bd", device_id: "8f2a-c401-19bd", name: "Living room",
+    revoked: false,
     layout: { revision: 42, pages: [
       { id: "climate", title: "Thermostat", widgets: [{ type: "thermostat", entity_id: "climate.living_room" }] },
       { id: "weather", title: "Weather", widgets: [{ type: "weather", entity_id: "weather.home" }] },
@@ -15,9 +16,12 @@ export const PANELS = [
       ] },
       { id: "door", title: "Front door", widgets: [{ type: "camera", stream_name: "doorbell" }] },
     ] },
-    last_seen: "4 minutes ago",
+    last_seen: new Date(Date.now() - 12_000).toISOString(),
   },
-  { panel_id: "31c7-08ae-4f52", name: "Hallway", online: false, layout: null, last_seen: null },
+  {
+    panel_id: "31c7-08ae-4f52", device_id: "31c7-08ae-4f52", name: "Hallway",
+    revoked: false, layout: null, last_seen: null,
+  },
 ];
 
 export const STATES = {
