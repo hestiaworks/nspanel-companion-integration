@@ -49,6 +49,9 @@ const RESPONSES = {
     ],
   },
   "nspanel_companion/updater/status": { paired: { base_url: "http://192.0.2.10:8098" } },
+  "nspanel_companion/scrypted/doorbells": [
+    { id: "front-door-cam", name: "Front door", bridge_id: "front-door" },
+  ],
 };
 
 /** Install the stand-in on window, the way Home Assistant hands it to a panel. */
@@ -58,6 +61,10 @@ export function fakeHass() {
     themes: {},
     connection: {
       sendMessagePromise: async (message) => {
+        if (message.type === "nspanel_companion/layout/get") {
+          const panel = PANELS.find((item) => item.panel_id === message.panel_id);
+          return panel?.layout ?? { schema_version: 1, revision: 0, pages: [] };
+        }
         if (message.type in RESPONSES) return RESPONSES[message.type];
         return {};
       },

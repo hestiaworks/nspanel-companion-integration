@@ -147,8 +147,11 @@ class NSPanelCompanionPanel extends HTMLElement {
   parsedWorkspaceRoute() {
     const match = window.location.hash.match(/^#panel\/([^/]+)(?:\/([^/]+))?(?:\/([^/]+))?$/);
     if (!match) return null;
-    const tabs = new Set(["general", "pages", "doorbell", "diagnostics", "advanced"]);
-    const tab = decodeURIComponent(match[2] || "general");
+    const tabs = new Set(["general", "pages", "doorbell", "diagnostics"]);
+    let tab = decodeURIComponent(match[2] || "general");
+    // Advanced was folded into diagnostics, so a link someone kept still
+    // lands where its contents went rather than silently on General.
+    if (tab === "advanced") tab = "diagnostics";
     return { panelId: decodeURIComponent(match[1]), tab: tabs.has(tab) ? tab : "general", pageId: match[3] ? decodeURIComponent(match[3]) : null };
   }
 
@@ -360,6 +363,23 @@ class NSPanelCompanionPanel extends HTMLElement {
       if (updateRoute) history.pushState(null, "", this.workspaceRoute(panelId, tab));
     } catch (error) { this.error = error?.message || "Unable to open editor"; }
     finally { this.busy = false; this.render(); }
+  }
+
+  /**
+   * The one write. §7: every field edits a draft and the bar publishes it.
+   *
+   * The name lives on the panel record and the rest lives in the layout, so
+   * this is two calls; it is one button because that is one intention.
+   */
+  async saveWorkspace() {
+    const general = this.shadowRoot.querySelector("#panel-general");
+    const layoutForm = this.shadowRoot.querySelector("#layout-editor");
+    if (general) await this.renamePanel(general);
+    if (!this.error && layoutForm) await this.saveEditor(layoutForm);
+    if (!this.error) {
+      this.editor.dirty = new Set();
+      this.render();
+    }
   }
 
   async renamePanel(form) {
@@ -948,6 +968,31 @@ class NSPanelCompanionPanel extends HTMLElement {
       button.addEventListener("click", () => this.closeWorkspace()));
     this.shadowRoot.querySelectorAll("[data-workspace-tab]").forEach((button) =>
       button.addEventListener("click", () => this.selectWorkspaceTab(button.dataset.workspaceTab)));
+    this.shadowRoot.querySelector("#save-workspace")?.addEventListener("click", () => this.saveWorkspace());
+    this.shadowRoot.querySelector("#revert-workspace")?.addEventListener("click", () => {
+      // Every field is redrawn from what the server last gave us, so throwing
+      // the DOM away is the revert.
+      if (this.editor) this.editor.dirty = new Set();
+      this.render();
+    });
+    // What "unsaved" means here is "touched", not "differs": a field typed
+    // back to its old value still counts. Saying so is honest and cheap;
+    // diffing every control against the layout is neither.
+    if (this.editor) {
+      const workspace = this.shadowRoot.querySelector("nav.tabs")?.parentNode;
+      workspace?.addEventListener("input", (event) => {
+        const field = event.target?.name || event.target?.id;
+        if (!field || !this.editor) return;
+        this.editor.dirty = this.editor.dirty || new Set();
+        this.editor.dirty.add(field);
+        const state = this.shadowRoot.querySelector("#save-state");
+        if (state) {
+          const count = this.editor.dirty.size;
+          state.textContent = `${count} unsaved change${count === 1 ? "" : "s"}`;
+          state.classList.add("dirty");
+        }
+      });
+    }
     this.shadowRoot.querySelector("#panel-general")?.addEventListener("submit", (event) => {
       event.preventDefault(); this.renamePanel(event.currentTarget);
     });
@@ -1456,10 +1501,21 @@ class NSPanelCompanionPanel extends HTMLElement {
       ? `${doorbell.scrypted_bridge_id}|${doorbell.scrypted_doorbell_id}` : "";
     const online = !panel.revoked && panel.last_seen && Date.now() - new Date(panel.last_seen).getTime() < 45000;
     const tab = this.workspaceTab;
-    return `<main class="workspace-page"><section class="workspace"><div class="editor-head"><div><button class="workspace-back" data-close-editor>← All panels</button><span class="eyebrow">Panel workspace</span><div class="workspace-title"><h2>${escapeHtml(panel.name)}</h2><span class="status ${online ? "online" : "waiting"}">${panel.revoked ? "Revoked" : online ? "Online" : "Offline"}</span></div><p class="device-id">${escapeHtml(panel.device_id)}</p></div></div>${this.error ? `<div class="notice error">${escapeHtml(this.error)}</div>` : ""}
-      <nav class="workspace-tabs" aria-label="Panel configuration">
-        ${[["general","General"],["pages","Pages"],["doorbell","Doorbell"],["diagnostics","Diagnostics"],["advanced","Advanced"]].map(([id,label]) => `<button type="button" data-workspace-tab="${id}" class="${tab === id ? "active" : ""}">${label}</button>`).join("")}
+    const dirty = this.editor.dirty?.size || 0;
+    const nextRevision = Number(layout.revision ?? 0) + 1;
+    return `<div class="app-bar">
+        <span class="mark"></span>
+        <div class="crumbs"><a href="#" data-close-editor>Panels</a><span class="sep">/</span><span class="here">${escapeHtml(panel.name)}</span></div>
+        <span class="status ${online ? "online" : "waiting"}">${panel.revoked ? "revoked" : online ? "online" : "offline"}</span>
+        <span class="spacer"></span>
+        <span class="save-state ${dirty ? "dirty" : ""}" id="save-state">${dirty ? `${dirty} unsaved change${dirty === 1 ? "" : "s"}` : `Draft · publishes revision ${nextRevision}`}</span>
+        <button type="button" id="revert-workspace" ${this.busy ? "disabled" : ""}>Revert</button>
+        <button type="button" id="save-workspace" class="primary" ${this.busy ? "disabled" : ""}>Save layout</button>
+      </div>
+      <nav class="tabs" aria-label="Panel configuration">
+        ${[["general","General"],["pages","Pages"],["doorbell","Doorbell"],["diagnostics","Diagnostics"]].map(([id,label]) => `<button type="button" data-workspace-tab="${id}" class="${tab === id ? "active" : ""}">${label}</button>`).join("")}
       </nav>
+      <main class="wide">${this.error ? `<div class="notice error">${escapeHtml(this.error)}</div>` : ""}
       <section class="workspace-panel" data-workspace-panel="general" ${tab === "general" ? "" : "hidden"}>
         <div class="workspace-intro"><h3>Panel identity</h3><p>Give this panel a name that describes its room or purpose. Its stable device ID never changes.</p></div>
         <form id="panel-general" class="settings-card">
@@ -1487,7 +1543,7 @@ class NSPanelCompanionPanel extends HTMLElement {
           ${this.pageComponentEditor(this.editor.draftPages.find((page) => page.id === this.editor.activePageId))}
           <div class="add-page"><label>New page name<input id="new-page-title" maxlength="48" placeholder="For example: Climate or Lights" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}></label><button id="add-page" type="button" class="primary" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Add page</button></div>
           ${this.editor.draftPages.some((page) => !(page.widgets || []).length) ? `<div class="notice draft-note">Pages without components remain drafts and cannot be published yet.</div>` : ""}
-          <div class="actions"><button data-close-editor type="button">Cancel</button><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Publish to panel</button></div>
+
         </section>
         <section class="workspace-panel" data-workspace-panel="doorbell" ${tab === "doorbell" ? "" : "hidden"}>
           <div class="workspace-intro"><h3>Doorbell</h3><p>Choose the visitor trigger, video source, and intercom behavior for this panel.</p></div>
@@ -1510,18 +1566,22 @@ class NSPanelCompanionPanel extends HTMLElement {
             <label>Talkback microphone gain<input name="talkback_gain" type="number" min="50" max="300" value="${Number(doorbell.talkback_gain ?? 100)}"> %</label>
             <small>Android does not let an app set the microphone's gain, so this scales the captured sound instead. Above about 200% a raised voice will clip.</small>
           </fieldset>
-          <div class="actions"><button data-test-doorbell="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Test doorbell</button><button data-close-editor type="button">Cancel</button><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Publish to panel</button></div>
+          <div class="row"><span class="grow t-small">Send a test ring to this panel with the settings above, as published.</span><button data-test-doorbell="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Test doorbell</button></div>
         </section>
       </form>
       <section class="workspace-panel" data-workspace-panel="diagnostics" ${tab === "diagnostics" ? "" : "hidden"}>
         <div class="workspace-intro"><h3>Diagnostics</h3><p>Download the latest bounded, sanitized health report uploaded by this panel.</p></div>
         <div class="settings-card"><dl><div><dt>Last seen</dt><dd>${formatDate(panel.last_seen)}</dd></div><div><dt>Reported layout</dt><dd>${escapeHtml(panel.reported_layout_revision || "—")}</dd></div></dl><div class="actions left"><button data-diagnostics="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Download diagnostics</button></div></div>
+        <div class="danger-zone">
+          <span class="section-label">Danger zone</span>
+        <div class="band"><div class="row tall">
+            <div class="grow"><div class="t-control">Remove this panel</div>
+              <div class="sub">Unpairs the app, erases its saved HA credentials, and removes this panel from Home Assistant.</div></div>
+            <button class="danger" data-revoke="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Remove &amp; unpair</button>
+          </div></div>
+        </div>
       </section>
-      <section class="workspace-panel" data-workspace-panel="advanced" ${tab === "advanced" ? "" : "hidden"}>
-        <div class="workspace-intro"><h3>Advanced</h3><p>Destructive panel management actions live here to keep everyday configuration safe.</p></div>
-        <div class="settings-card danger-zone"><h3>Remove this panel</h3><p>Unpairs the app, erases its saved HA credentials, and removes this panel from Home Assistant.</p><div class="actions left"><button class="danger" data-revoke="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Remove & unpair</button></div></div>
-      </section>
-    </section></main>`;
+      </main>`;
   }
 }
 
@@ -2001,6 +2061,45 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .token-field { display:flex; gap:var(--s2); margin-top:var(--s4); }
 .token-field code { flex:1; min-width:0; height:44px; display:flex; align-items:center; padding:0 var(--s3); background:var(--surface); border:1px solid var(--line); color:var(--muted); overflow:auto; white-space:nowrap; }
 .token-field button { height:44px; }
+
+
+/* 13b ── WORKSPACE FORMS ──────────────────────────────────────
+   The tabs keep the markup they have — §11 calls them restyle only,
+   and rewriting six thousand characters of interpolated template to
+   reach the same picture would be a lot of risk for no user-visible
+   difference. These rules put that structure into the Slab idiom:
+   a fieldset is a band, its legend is a section label, and a label
+   is a row with its hint beneath. */
+
+.workspace-panel { padding:var(--page-inset) 0; display:flex; flex-direction:column; gap:26px; }
+.workspace-panel[hidden] { display:none; }
+.workspace-intro h3 { font:700 22px/1.2 var(--font); }
+.workspace-intro p { font:400 14px/1.5 var(--font); color:var(--muted); margin-top:4px; }
+
+.settings-card, .workspace-panel fieldset { border:1px solid var(--line); padding:0; margin:0; display:flex; flex-direction:column; }
+.settings-card > *, .workspace-panel fieldset > * { padding:14px var(--s4); }
+.settings-card > * + *, .workspace-panel fieldset > * + * { border-top:1px solid var(--line); }
+.workspace-panel legend { float:left; width:100%; padding:12px var(--s4); border-bottom:1px solid var(--line);
+  font:600 11px/1 var(--font); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
+.workspace-panel legend + * { clear:both; }
+
+.settings-card > label, .workspace-panel fieldset > label {
+  display:grid; grid-template-columns:minmax(0,1fr) 220px; align-items:center; gap:4px var(--s4);
+  font:400 14px/1.4 var(--font); }
+.settings-card > label > small, .workspace-panel fieldset > label > small,
+.settings-card > small, .workspace-panel fieldset > small {
+  grid-column:1 / -1; font:400 12px/1.5 var(--font); color:var(--muted); display:block; }
+.settings-card > small, .workspace-panel fieldset > small { padding-top:0; margin-top:-6px; border-top:0; }
+.settings-card > label > :is(input,select,textarea), .workspace-panel fieldset > label > :is(input,select,textarea) { grid-column:2; grid-row:1; }
+.settings-card > label.check, .workspace-panel fieldset > label.check { display:flex; }
+.settings-card > label.check > input, .workspace-panel fieldset > label.check > input { order:2; margin-left:auto; }
+
+.workspace-panel .actions { display:flex; justify-content:flex-end; gap:var(--s2); }
+.workspace-panel dl { display:flex; flex-direction:column; }
+.workspace-panel dl > div { display:flex; gap:var(--s4); padding:12px var(--s4); }
+.workspace-panel dl > div + div { border-top:1px solid var(--line); }
+.workspace-panel dt { flex:1; color:var(--muted); }
+.workspace-panel dd { margin:0; text-align:right; }
 
 
 /* 14 ── UTILITIES AND RESPONSIVE ──────────────────────────── */
