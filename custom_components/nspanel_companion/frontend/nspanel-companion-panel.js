@@ -1187,7 +1187,7 @@ class NSPanelCompanionPanel extends HTMLElement {
    * the sheet listing them is two per row on a 480 pixel screen.
    */
   modeChoices(widget, entityId, attribute, title, field) {
-    const reported = this.hass?.states?.[entityId]?.attributes?.[attribute];
+    const reported = this._hass?.states?.[entityId]?.attributes?.[attribute];
     if (!Array.isArray(reported) || reported.length < 2) return "";
     const chosen = Array.isArray(widget[attribute]) ? widget[attribute] : [];
     const tooMany = reported.length > 8;
