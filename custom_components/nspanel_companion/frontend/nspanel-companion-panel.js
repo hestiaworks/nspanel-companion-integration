@@ -1288,7 +1288,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       <div><span class="t-label">Pages</span><b class="${known ? "" : "none"}">${known ? pageCount : "—"}</b></div>
       <div><span class="t-label">Last seen</span><b class="${panel.last_seen ? "" : "none"}">${panel.last_seen ? escapeHtml(sinceLabel(panel.last_seen)) : "—"}</b></div>
       <div class="wide"><span class="t-label">Revision</span>
-        <b class="${revision ? "id" : "none"}" title="${escapeHtml(revision)}">${revision ? escapeHtml(revision) : "—"}</b></div>
+        <b class="id ${revision ? "" : "none"}" title="${escapeHtml(revision)}">${revision ? escapeHtml(revision) : "—"}</b></div>
     </div>`;
     return `<article class="panel-card">
       <div class="identity">
@@ -1328,7 +1328,8 @@ class NSPanelCompanionPanel extends HTMLElement {
         ${this.loading
           ? `<div class="empty"><span class="glyph">▣</span><b class="t-sub">Loading panels…</b></div>`
           : this.panels.length
-            ? `<div class="panel-grid">${this.panels.map((p) => this.panelCard(p)).join("")}</div>`
+            ? `<div class="panel-grid">${this.panels.map((p) => this.panelCard(p)).join("")}${
+                this.panels.length % 2 ? `<div class="panel-card blank"></div>` : ""}</div>`
             : `<div class="empty"><span class="glyph">▣</span><b class="t-sub">No panels yet</b><p>Open the companion app on an NSPanel Pro, leave the pairing screen visible, then search this network.</p><button id="find-panels-empty" class="primary" type="button" ${this.busy ? "disabled" : ""}>Find panels</button></div>`}
       </main>
       ${this.token ? this.tokenDialog() : ""}
@@ -2573,6 +2574,12 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
    reads as loud as a real one (§4). The design names this .none on a
    metric; the same applies in a key/value table. */
 .kv .v.none { color:var(--disabled); }
+
+/* The cell that completes an odd last row. It carries the same rules
+   as a tile so the grid stays a rectangle, and disappears when the
+   grid is a single column and there is no row to complete. */
+.panel-card.blank { min-height:0; padding:0; }
+@media (max-width:980px) { .panel-card.blank { display:none; } }
 
 /* 14 ── UTILITIES AND RESPONSIVE ──────────────────────────── */
 

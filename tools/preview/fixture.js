@@ -29,8 +29,16 @@ export const PANELS = [
     last_seen: new Date(Date.now() - 12_000).toISOString(),
   },
   {
+    panel_id: "e274-afd5-af63", device_id: "e274-afd5-af63", name: "NSPanel 79F2",
+    revoked: false, layout_revision: "ui-1788282949347", page_count: 2, connected: true,
+    app_version: "1.1.0 (1010099)", reported_layout_revision: "ui-1788282949347", events: [],
+    layout: { revision: "ui-1788282949347", pages: [{ id: "a", title: "A", widgets: [] }] },
+    last_seen: new Date(Date.now() - 11_000).toISOString(),
+  },
+  {
     panel_id: "31c7-08ae-4f52", device_id: "31c7-08ae-4f52", name: "Hallway",
-    revoked: false, layout: null, layout_revision: null, page_count: 0, last_seen: null,
+    revoked: false, layout: null, layout_revision: null, page_count: 1, connected: true,
+    last_seen: new Date(Date.now() - 15_000).toISOString(),
   },
 ];
 
