@@ -1247,10 +1247,12 @@ class NSPanelCompanionPanel extends HTMLElement {
     const tone = panel.revoked ? "error" : state === "unconfigured" ? "waiting" : online ? "online" : "offline";
     // The metrics row is what makes a wall of tiles readable at a glance:
     // the same three facts, in the same place, at the same height.
+    const revision = panel.layout_revision ? String(panel.layout_revision) : "";
     const metrics = `<div class="metrics">
-      <div><span class="t-label">Pages</span><b>${known ? pageCount : "—"}</b></div>
-      <div><span class="t-label">Revision</span><b>${panel.layout_revision ?? "—"}</b></div>
-      <div><span class="t-label">Last seen</span><b>${panel.last_seen ? escapeHtml(sinceLabel(panel.last_seen)) : "—"}</b></div>
+      <div><span class="t-label">Pages</span><b class="${known ? "" : "none"}">${known ? pageCount : "—"}</b></div>
+      <div><span class="t-label">Last seen</span><b class="${panel.last_seen ? "" : "none"}">${panel.last_seen ? escapeHtml(sinceLabel(panel.last_seen)) : "—"}</b></div>
+      <div class="wide"><span class="t-label">Revision</span>
+        <b class="${revision ? "id" : "none"}" title="${escapeHtml(revision)}">${revision ? escapeHtml(revision) : "—"}</b></div>
     </div>`;
     return `<article class="panel-card">
       <div class="identity">
@@ -1555,7 +1557,7 @@ class NSPanelCompanionPanel extends HTMLElement {
           data-select-page="${escapeHtml(page.id)}" data-page-drop="${index}">
           <span class="index">${String(index + 1).padStart(2, "0")}</span>
           <div class="grow"><div class="name truncate">${escapeHtml(page.title || "Untitled")}</div>
-            <div class="meta">${describePage(page)}</div></div>
+            ${describePage(page, page.title) ? `<div class="meta">${describePage(page, page.title)}</div>` : ""}</div>
           <span class="drag" data-page-drag="${index}" draggable="true" title="Drag to reorder">⠿</span>
         </div>`).join("")}
       <div class="add-page" id="add-page-rail" role="button" tabindex="0">＋ Add page</div>
@@ -1648,7 +1650,7 @@ class NSPanelCompanionPanel extends HTMLElement {
             <input class="mono" value="${escapeHtml(page.id)}" readonly>
             <span class="hint">Set when the page is created; the panel remembers it across publishes.</span></label>
           <div class="field"><span class="label">Components</span>
-            <span class="hint">${describePage(page)}. Thermostat, weather, camera, history and intercom are full-screen: choosing one clears the other slots.</span></div>
+            <span class="hint">${describePage(page) || "one component"}. Thermostat, weather, camera, history and intercom are full-screen: choosing one clears the other slots.</span></div>
         </div>
       </div>`;
     }
@@ -1767,12 +1769,12 @@ class NSPanelCompanionPanel extends HTMLElement {
             <div class="kv">
               <div><span class="k">Last seen</span><span class="v">${panel.last_seen ? `${escapeHtml(sinceLabel(panel.last_seen))} ago · ${formatDate(panel.last_seen)}` : "never"}</span></div>
               <div><span class="k">Websocket</span><span class="v ${panel.connected ? "ok-text" : "muted"}">${panel.connected ? "connected" : "not connected"}</span></div>
-              <div><span class="k">App version</span><span class="v mono">${escapeHtml(panel.app_version || "—")}</span></div>
-              <div><span class="k">Published revision</span><span class="v mono">${escapeHtml(String(panel.layout_revision ?? "—"))}</span></div>
+              <div><span class="k">App version</span><span class="v ${panel.app_version ? "mono" : "none"}">${escapeHtml(panel.app_version || "—")}</span></div>
+              <div><span class="k">Published revision</span><span class="v ${panel.layout_revision ? "id" : "none"}" title="${escapeHtml(String(panel.layout_revision ?? ""))}">${escapeHtml(String(panel.layout_revision ?? "—"))}</span></div>
               <div><span class="k">Revision the panel reports</span><span class="v"><span class="mono">${escapeHtml(panel.reported_layout_revision || "—")}</span>${
                 panel.reported_layout_revision && String(panel.reported_layout_revision) === String(panel.layout_revision)
                   ? ` <span class="ok-text">in sync</span>` : panel.reported_layout_revision ? ` <span class="accent">behind</span>` : ""}</span></div>
-              <div><span class="k">Panel ID</span><span class="v mono">${escapeHtml(panel.panel_id)}</span></div>
+              <div><span class="k">Panel ID</span><span class="v id" title="${escapeHtml(panel.panel_id)}">${escapeHtml(panel.panel_id)}</span></div>
             </div>
           </div>
           <div><span class="section-label">Report</span>
@@ -1817,12 +1819,19 @@ const sinceLabel = (iso) => {
   return `${Math.round(seconds / 86400)}d`;
 };
 
-/** What a page holds, in the rail's one line. */
-const describePage = (page) => {
+/**
+ * What a page holds, in the rail's one line — or nothing.
+ *
+ * §10: a subtitle goes when it repeats the title. A page called Weather
+ * holding a weather component said "Weather / weather", which cost a line of
+ * height and told you what you had just read.
+ */
+const describePage = (page, title = "") => {
   const widgets = page.widgets || [];
   if (!widgets.length) return "empty";
   const kinds = [...new Set(widgets.map((widget) => widget.type.replace("entity_button", "control")))];
-  return widgets.length === 1 ? kinds[0] : `${widgets.length} components`;
+  const summary = widgets.length === 1 ? kinds[0] : `${widgets.length} components`;
+  return summary.toLowerCase() === String(title).trim().toLowerCase() ? "" : summary;
 };
 
 /** The options a slot has switched on, for the board's last line. */
@@ -1879,27 +1888,42 @@ const STYLES = `
    state is a fill, never an outline colour; identifiers are
    monospace; destructive is red and on the right; every
    interactive element has a visible focus ring.
+
+   TWO RULES THAT ARE EASY TO BREAK AND WRECK THE UI
+
+   1. A border is ALWAYS var(--line). Never var(--accent).
+      Accent means "this is the thing you selected" and nothing
+      else. An accent rule on a list divider or an Add button
+      makes the least important element the loudest on screen.
+      Accent is permitted on exactly four things: a primary
+      button fill, the 3px inset bar of the ONE selected row,
+      the 2px underline of the ONE active tab, and a focus ring.
+
+   2. Accent as text is var(--accent-ink), never var(--accent).
    ============================================================ */
 
 
 /* 1 ── TOKENS ─────────────────────────────────────────────── */
 
 :host {
-  /* surface */
+  /* surface — four steps, each visibly apart at arm's length.
+     The panel could collapse these because one screen showed one
+     thing at a time; a three-column app cannot. */
   --canvas:#0E1012;
-  --surface:#14171A;
-  --surface-raised:#1D2126;
-  --accent-wash:#2A1A11;
+  --surface:#171B1F;
+  --surface-raised:#242B33;
+  --accent-wash:#33200F;
 
   /* ink */
   --ink:#F2F5F7;
-  --muted:#8A9299;
+  --muted:#949CA3;
   --disabled:#4A5158;
-  --line:#23282D;
+  --line:#2F373E;
 
   /* accent and status */
   --accent:#F36D21;
-  --accent-ink:#FF9455;   /* accent as text — never the raw accent on a light field */
+  --accent-ink:#FF9455;   /* accent as TEXT. --accent is for FILLS only:
+                             #F36D21 on --accent-wash is 2.6:1, unreadable. */
   --on-accent:#0E1012;
   --danger:#D24A3F;
   --ok:#34C759;
@@ -1936,14 +1960,14 @@ const STYLES = `
 }
 
 :host(.light) {
-  --canvas:#F4F5F3;
+  --canvas:#EFF1EE;
   --surface:#FFFFFF;
-  --surface-raised:#ECEEEA;
-  --accent-wash:#FFEBE0;
+  --surface-raised:#E4E7E2;
+  --accent-wash:#FFE4D4;
   --ink:#14171A;
-  --muted:#6E7570;
+  --muted:#636A65;
   --disabled:#A8ADA6;
-  --line:#D9DCD8;
+  --line:#C7CCC6;
   --accent-ink:#C9560F;
   --on-accent:#FFFFFF;
   --danger:#C0392B;
@@ -1982,7 +2006,7 @@ main.wide { max-width:none; }
 .t-micro  { font:400 11px/1.4 var(--font); color:var(--muted); }
 .t-mono   { font:500 12px/1.4 var(--mono); }
 
-.t-label.accent { color:var(--accent); }
+.t-label.accent { color:var(--accent-ink); }
 .t-label.danger { color:var(--danger); }
 .section-label { font:600 11px/1 var(--font); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin-bottom:10px; display:block; }
 .section-label + .band { margin-top:0; }
@@ -2030,7 +2054,7 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .select-wrap::after { content:'▾'; position:absolute; right:12px; top:50%; transform:translateY(-50%); color:var(--muted); pointer-events:none; }
 
 :is(button,input,select,textarea,a,[tabindex],.slot,.row):focus-visible {
-  outline:2px solid var(--accent); outline-offset:1px; border-color:transparent;
+  outline:2px solid var(--accent); outline-offset:1px;
 }
 
 /* toggle */
@@ -2072,7 +2096,7 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .row.interactive { cursor:pointer; }
 .row.interactive:hover { background:var(--surface-raised); }
 .row.selected { background:var(--accent-wash); box-shadow:inset 3px 0 0 var(--accent); }
-.row.selected .index { color:var(--accent); }
+.row.selected .index { color:var(--accent-ink); }
 .row .index { font:500 12px/1 var(--mono); color:var(--muted); flex:none; }
 .row .drag { color:var(--disabled); cursor:grab; font-size:14px; }
 .row .drag:active { cursor:grabbing; }
@@ -2106,11 +2130,11 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .notice.plain { background:var(--surface); }
 
 .empty { border:1px solid var(--line); padding:56px var(--page-inset); display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
-.empty .glyph { width:40px; height:40px; display:grid; place-items:center; border-radius:var(--radius); background:var(--accent-wash); color:var(--accent); font-size:20px; }
+.empty .glyph { width:40px; height:40px; display:grid; place-items:center; border-radius:var(--radius); background:var(--accent-wash); color:var(--accent-ink); font-size:20px; }
 .empty p { max-width:340px; font:400 14px/1.5 var(--font); color:var(--muted); }
 
 .device-icon { flex:none; width:40px; height:40px; display:grid; place-items:center; border-radius:var(--radius); background:var(--surface-raised); color:var(--muted); font-size:20px; }
-.device-icon.active { background:var(--accent-wash); color:var(--accent); }
+.device-icon.active { background:var(--accent-wash); color:var(--accent-ink); }
 .device-icon.small { width:32px; height:32px; font-size:16px; }
 
 
@@ -2128,7 +2152,6 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .tabs button { height:100%; border:0; border-radius:0; background:transparent; color:var(--muted); padding:0 var(--s4); }
 .tabs button:hover { background:transparent; color:var(--ink); }
 .tabs button.active { color:var(--ink); box-shadow:inset 0 -2px 0 var(--accent); }
-.tabs button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 
 /* the only thing that writes */
 .save-state { font:400 13px/1 var(--font); color:var(--muted); }
@@ -2154,8 +2177,30 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .panel-card .identity { display:flex; align-items:flex-start; gap:14px; }
 .panel-card .identity .grow { flex:1; min-width:0; }
 .panel-card .identity .id { color:var(--muted); margin-top:3px; }
-.panel-card .metrics { display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid var(--line); padding-top:14px; }
+.panel-card .metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:14px 0; border-top:1px solid var(--line); padding-top:14px; }
+.panel-card .metrics > * { min-width:0; }
 .panel-card .metrics b { display:block; font:700 20px/1 var(--font); margin-top:4px; }
+
+/* An identifier is not a reading. Revisions, panel ids, tokens and
+   entity ids are unbounded strings the user reads character by
+   character — never at --t-read size, where they can only wrap and
+   end up shouting over the name. Monospace, body size, one line,
+   ellipsis, full value in a title attribute:
+
+     <div class="metric wide">
+       <span class="t-label">Revision</span>
+       <b class="id" title="scrypted-1788256615077">scrypted-1788256615077</b>
+     </div>
+
+   .wide gives it the whole grid row, so 30-odd characters fit
+   without truncating at all. Keep the 1/3 columns for values that
+   are genuinely short: a count, a duration, a temperature. */
+.panel-card .metrics > .wide { grid-column:1 / -1; }
+.panel-card .metrics b.id {
+  font:500 13px/1.45 var(--mono); color:var(--muted);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.panel-card .metrics b.none { color:var(--disabled); }
 .panel-card .actions { display:flex; gap:var(--s2); margin-top:auto; }
 .panel-card .warn-strip { margin:0 calc(var(--pane-inset) * -1); padding:14px var(--pane-inset); background:var(--accent-wash); border-top:1px solid var(--line); font:400 14px/1.5 var(--font); }
 
@@ -2209,17 +2254,21 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 
 /* 11 ── PAGE EDITOR ───────────────────────────────────────── */
 
-.editor { display:grid; grid-template-columns:var(--rail) minmax(0,1fr) var(--inspector); min-height:calc(100vh - var(--app-bar) - var(--tab-bar)); }
+.editor { display:grid; grid-template-columns:var(--rail) minmax(0,1fr) var(--inspector); min-height:calc(100vh - var(--app-bar)); }
 
-.editor > .rail { border-right:1px solid var(--line); display:flex; flex-direction:column; }
+.editor > .rail { border-right:1px solid var(--line); background:var(--canvas); display:flex; flex-direction:column; }
 .rail .rail-head { height:var(--tab-bar); display:flex; align-items:center; padding:0 var(--s4); border-bottom:1px solid var(--line); }
 .rail .page-item { min-height:var(--row-tall); display:flex; align-items:center; gap:var(--s3); padding:0 var(--s4); border-bottom:1px solid var(--line); cursor:pointer; }
 .rail .page-item:hover { background:var(--surface-raised); }
-.rail .page-item.selected { background:var(--accent-wash); box-shadow:inset 3px 0 0 var(--accent); }
+.rail .page-item.selected { background:var(--accent-wash); box-shadow:inset 3px 0 0 var(--accent); border-bottom-color:var(--line); }
 .rail .page-item .grow { flex:1; min-width:0; }
 .rail .page-item .name { font:600 14px/1.2 var(--font); }
 .rail .page-item .meta { font:400 12px/1.2 var(--font); color:var(--muted); margin-top:2px; }
-.rail .page-item.selected .meta { color:var(--accent); }
+.rail .page-item.selected .meta { color:var(--muted); }
+/* the type is the least important string in the row: it never takes colour.
+   Omit it entirely when it only repeats the name — "Weather / weather"
+   costs a line of height and says nothing. */
+.rail .page-item .meta:empty { display:none; }
 .rail .add-page { min-height:var(--row-tall); display:flex; align-items:center; gap:10px; padding:0 var(--s4); border-bottom:1px solid var(--line); color:var(--muted); font:600 14px/1 var(--font); cursor:pointer; }
 .rail .rail-foot { margin-top:auto; padding:var(--s4); border-top:1px solid var(--line); font:400 12px/1.5 var(--font); color:var(--muted); }
 
@@ -2245,14 +2294,14 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .slot .id { font:400 11px/1.3 var(--mono); color:var(--muted); margin-top:4px; }
 .slot .flags { font:400 11px/1.3 var(--mono); color:var(--muted); margin-top:2px; }
 .slot.selected { border:2px solid var(--accent); background:var(--accent-wash); padding:13px; }
-.slot.selected .kind { color:var(--accent); }
+.slot.selected .kind { color:var(--accent-ink); }
 .slot.selected::after { content:'EDITING'; position:absolute; top:-1px; right:-1px; background:var(--accent); color:var(--on-accent); font:700 10px/1 var(--mono); letter-spacing:.1em; padding:3px 7px; }
 .slot.empty { border:1px dashed var(--disabled); display:flex; align-items:center; justify-content:center; gap:6px; flex-direction:column; color:var(--muted); }
 .slot.empty .plus { font-size:20px; line-height:1; }
 .slot.dragging { opacity:.45; }
 .slot.drop-target { border-color:var(--accent); }
 
-.editor > .inspector { border-left:1px solid var(--line); display:flex; flex-direction:column; }
+.editor > .inspector { border-left:1px solid var(--line); background:var(--canvas); display:flex; flex-direction:column; }
 .inspector .inspector-head { height:var(--tab-bar); display:flex; align-items:center; gap:10px; padding:0 var(--s4); border-bottom:1px solid var(--line); }
 .inspector .inspector-body { padding:var(--s4); display:flex; flex-direction:column; gap:var(--s4); flex:1; overflow:auto; }
 .inspector .inspector-body > .push { margin-top:auto; }
@@ -2283,7 +2332,7 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .icon-grid label small { font:400 9px/1 var(--mono); color:var(--muted); }
 .icon-grid input { position:absolute; opacity:0; pointer-events:none; }
 .icon-grid label:has(input:checked) { background:var(--accent-wash); box-shadow:inset 0 0 0 2px var(--accent); }
-.icon-grid label:has(input:checked) span, .icon-grid label:has(input:checked) small { color:var(--accent); }
+.icon-grid label:has(input:checked) span, .icon-grid label:has(input:checked) small { color:var(--accent-ink); }
 .icon-grid [hidden] { display:none; }
 
 .add-grid { display:grid; grid-template-columns:1fr 1fr; }
@@ -2483,6 +2532,11 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
   background-repeat:no-repeat; background-position:right 12px center; padding-right:32px;
 }
 
+
+/* An absent value is not a number: it sits in disabled so it never
+   reads as loud as a real one (§4). The design names this .none on a
+   metric; the same applies in a key/value table. */
+.kv .v.none { color:var(--disabled); }
 
 /* 14 ── UTILITIES AND RESPONSIVE ──────────────────────────── */
 

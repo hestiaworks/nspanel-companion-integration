@@ -4,15 +4,15 @@
 export const PANELS = [
   {
     panel_id: "8f2a-c401-19bd", device_id: "8f2a-c401-19bd", name: "Living room",
-    revoked: false, layout_revision: 42, page_count: 4, connected: true,
-    app_version: "1.1.0 (1010099)", reported_layout_revision: "42",
+    revoked: false, layout_revision: "ui-1788259412773", page_count: 4, connected: true,
+    app_version: "1.1.0 (1010099)", reported_layout_revision: "ui-1788259412773",
     events: [
       { at: new Date(Date.now() - 60_000).toISOString(), message: "Layout revision 42 acknowledged", level: "info" },
       { at: new Date(Date.now() - 120_000).toISOString(), message: "Layout revision 42 published", level: "info" },
       { at: new Date(Date.now() - 3_600_000).toISOString(), message: "Websocket connected", level: "info" },
       { at: new Date(Date.now() - 3_660_000).toISOString(), message: "Websocket dropped", level: "warn" },
     ],
-    layout: { revision: 42, pages: [
+    layout: { revision: "ui-1788259412773", pages: [
       { id: "climate", title: "Thermostat", widgets: [{ type: "thermostat", entity_id: "climate.living_room" }] },
       { id: "weather", title: "Weather", widgets: [{ type: "weather", entity_id: "weather.home" }] },
       { id: "controls", title: "Controls", widgets: [
