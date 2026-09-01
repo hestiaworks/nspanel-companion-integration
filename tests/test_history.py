@@ -67,5 +67,30 @@ class BucketTest(unittest.TestCase):
         self.assertIsNone(history.summarise(history.bucket([], "30d", self.now)))
 
 
+
+class BucketBoundsTest(unittest.TestCase):
+    """The window a series covers, which only the server knows.
+
+    The panel used to label its axis "-6h, -4h, -2h, now" because the series
+    it was sent carried no times at all. It cannot infer them either: the
+    server decides what "now" was when it bucketed, and by the time a panel
+    draws the row that moment has passed.
+    """
+
+    def test_the_window_is_stated_in_milliseconds(self):
+        start, end, width = history.bucket_bounds("24h", 1_000_000.0)
+        self.assertEqual(1_000_000.0 - 24 * 3600, start)
+        self.assertEqual(1_000_000.0, end)
+        # 48 buckets across a day is half an hour each.
+        self.assertEqual(1800.0, width)
+
+    def test_every_span_divides_evenly_into_its_buckets(self):
+        # A width that did not divide evenly would put the last bucket's end
+        # somewhere other than now, and the axis would say so.
+        for span in history.RANGE_SECONDS:
+            with self.subTest(span=span):
+                start, end, width = history.bucket_bounds(span, 0.0)
+                self.assertAlmostEqual(end - start, width * history.RANGE_BUCKETS[span])
+
 if __name__ == "__main__":
     unittest.main()

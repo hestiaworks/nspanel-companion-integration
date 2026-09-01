@@ -5,6 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
+# Four rows of two on a 480 px sheet.
+MAX_CLIMATE_MODES = 8
+
 RING_SOUNDS = {"off", "chime_1", "chime_2", "chime_3"}
 
 # The three sounds the first audio build shipped, since replaced. A layout
@@ -95,6 +98,19 @@ def validate_layout(value: Any) -> dict[str, Any]:
                     raise ValueError("Weather forecast must show 1, 3, or 5 days")
                 if "show_hourly" in widget and not isinstance(widget["show_hourly"], bool):
                     raise ValueError("show_hourly must be a boolean")
+            if widget.get("type") == "thermostat":
+                # Which fan and swing modes the panel offers, in the order
+                # given. Empty means the panel shows whatever the entity
+                # reports — the absence of an opinion, not an instruction to
+                # show none. Capped because the sheet listing them is two
+                # per row on a 480 px screen.
+                for field in ("fan_modes", "swing_modes"):
+                    modes = widget.get(field, [])
+                    if not isinstance(modes, list) or len(modes) > MAX_CLIMATE_MODES:
+                        raise ValueError(f"{field} must be a list of at most {MAX_CLIMATE_MODES} modes")
+                    if any(not isinstance(mode, str) or not mode.strip() for mode in modes):
+                        raise ValueError(f"{field} must contain mode names")
+                    widget[field] = [mode.strip() for mode in modes]
             if widget.get("type") == "entity_button":
                 if str(widget.get("icon", "auto")) not in CONTROL_ICONS:
                     raise ValueError("Invalid control icon")

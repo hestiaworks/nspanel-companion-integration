@@ -347,6 +347,47 @@ class LayoutValidationTest(unittest.TestCase):
         self.assertEqual("intercom", value["pages"][0]["widgets"][0]["type"])
 
 
+
+class ThermostatModeChoiceTest(unittest.TestCase):
+    """Which fan and swing modes a panel offers.
+
+    Some units report a dozen swing positions. All of them belong to the
+    entity, but a wall panel is not the place to choose between "Fixed
+    upper-middle" and "Fixed middle" — and the sheet that lists them is 480
+    pixels tall.
+    """
+
+    def panel(self, **widget):
+        return layout_module.validate_layout({
+            "schema_version": 1, "revision": "modes",
+            "pages": [{"id": "p", "widgets": [
+                {"type": "thermostat", "entity_id": "climate.x", **widget},
+            ]}],
+        })["pages"][0]["widgets"][0]
+
+    def test_listing_nothing_offers_everything_the_entity_has(self):
+        # The panel reads the entity's own modes, so an empty list is the
+        # absence of an opinion rather than an instruction to show none.
+        widget = self.panel()
+        self.assertEqual([], widget["fan_modes"])
+        self.assertEqual([], widget["swing_modes"])
+
+    def test_it_keeps_the_chosen_modes_in_order(self):
+        widget = self.panel(swing_modes=["off", "vertical"], fan_modes=["low", "high"])
+        self.assertEqual(["off", "vertical"], widget["swing_modes"])
+        self.assertEqual(["low", "high"], widget["fan_modes"])
+
+    def test_it_refuses_something_that_is_not_a_list_of_names(self):
+        with self.assertRaises(ValueError):
+            self.panel(swing_modes="vertical")
+        with self.assertRaises(ValueError):
+            self.panel(fan_modes=[1, 2])
+
+    def test_it_refuses_more_than_the_sheet_can_show(self):
+        # Eight is four rows of two, which is what fits above the fold.
+        with self.assertRaises(ValueError):
+            self.panel(fan_modes=[f"mode_{n}" for n in range(9)])
+
 if __name__ == "__main__":
     unittest.main()
 

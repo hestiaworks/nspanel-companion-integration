@@ -207,7 +207,12 @@ class PanelWebSocketView(HomeAssistantView):
                 samples = await history_samples(entity_id, span)
             except Exception:  # a recorder that is absent, purged or busy
                 return
-            buckets = bucket(samples, span, time.time())
+            # One "now" for both the bucketing and the bounds sent with it,
+            # so the panel labels the bars the server actually drew rather
+            # than the window it would have drawn a moment later.
+            now = time.time()
+            buckets = bucket(samples, span, now)
+            start, _end, width = bucket_bounds(span, now)
             state = self._hass.states.get(entity_id)
             if socket.closed:
                 return
@@ -216,6 +221,11 @@ class PanelWebSocketView(HomeAssistantView):
                 "entity_id": entity_id,
                 "range": span,
                 "buckets": buckets,
+                # When the row begins and how wide one bar is. Without these
+                # the panel can only count backwards from its own clock, and
+                # its axis said "-6h, -4h, -2h" because that is all it knew.
+                "start_ms": int(start * 1000),
+                "bucket_ms": int(width * 1000),
                 "summary": summarise(buckets),
                 "unit": (state.attributes.get("unit_of_measurement") if state else None) or "",
             })
