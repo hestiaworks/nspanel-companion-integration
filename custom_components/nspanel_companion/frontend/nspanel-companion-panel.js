@@ -994,6 +994,18 @@ class NSPanelCompanionPanel extends HTMLElement {
    * picking an option sets its value and fires the same events it always did.
    */
   enhanceSelects() {
+    if (!this.selectDismissBound) {
+      this.selectDismissBound = true;
+      this.shadowRoot.addEventListener("pointerdown", (event) => {
+        const inside = event.composedPath().find((node) => node?.classList?.contains?.("select-wrap"));
+        this.shadowRoot.querySelectorAll(".select-list:not([hidden])").forEach((list) => {
+          if (list.parentNode !== inside) {
+            list.hidden = true;
+            list.previousElementSibling?.setAttribute("aria-expanded", "false");
+          }
+        });
+      });
+    }
     this.shadowRoot.querySelectorAll("select:not([data-enhanced])").forEach((select) => {
       select.dataset.enhanced = "true";
       const wrap = document.createElement("div");
@@ -1056,9 +1068,6 @@ class NSPanelCompanionPanel extends HTMLElement {
       });
 
       field.addEventListener("click", () => (list.hidden ? open() : close()));
-      this.shadowRoot.addEventListener("pointerdown", (event) => {
-        if (!list.hidden && !wrap.contains(event.composedPath()[0])) close();
-      });
       field.addEventListener("keydown", (event) => {
         if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
       });
@@ -2678,6 +2687,10 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
    inspector's scroll box. */
 
 .select-native { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+/* The sheet draws a chevron on .select-wrap at top:50%, for a wrap that is
+   just a field. Ours is field plus list, so that pseudo-element landed in
+   the middle of the open list. The field carries its own. */
+.select-wrap:has(.select-field)::after { content:none; }
 .select-wrap { position:relative; display:block; }
 
 .select-field {
