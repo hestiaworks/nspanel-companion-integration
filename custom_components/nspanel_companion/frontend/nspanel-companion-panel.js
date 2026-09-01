@@ -980,7 +980,96 @@ class NSPanelCompanionPanel extends HTMLElement {
     URL.revokeObjectURL(link.href);
   }
 
+  /**
+   * Replace every native select with one the design system can style.
+   *
+   * A native <select> renders its list with the operating system, which no
+   * stylesheet reaches — so a panel of Slab rows opened a grey macOS menu.
+   * The list expands inline beneath the field rather than floating over it,
+   * the way §12's entity picker does: a floating layer would be clipped by
+   * the inspector's own scrolling anyway.
+   *
+   * The <select> itself stays in the DOM, hidden. It is what the forms read
+   * on save, so every existing FormData and change listener is untouched —
+   * picking an option sets its value and fires the same events it always did.
+   */
+  enhanceSelects() {
+    this.shadowRoot.querySelectorAll("select:not([data-enhanced])").forEach((select) => {
+      select.dataset.enhanced = "true";
+      const wrap = document.createElement("div");
+      wrap.className = "select-wrap";
+      select.parentNode.insertBefore(wrap, select);
+      wrap.appendChild(select);
+      select.classList.add("select-native");
+
+      const field = document.createElement("button");
+      field.type = "button";
+      field.className = "select-field";
+      field.setAttribute("aria-haspopup", "listbox");
+      const label = document.createElement("span");
+      label.className = "grow truncate";
+      field.append(label, Object.assign(document.createElement("span"), { className: "chev", textContent: "▾" }));
+
+      const list = document.createElement("div");
+      list.className = "select-list";
+      list.setAttribute("role", "listbox");
+      list.hidden = true;
+
+      const paint = () => {
+        label.textContent = select.options[select.selectedIndex]?.textContent || "";
+        [...list.children].forEach((row, index) => {
+          row.classList.toggle("selected", index === select.selectedIndex);
+          row.setAttribute("aria-selected", index === select.selectedIndex ? "true" : "false");
+        });
+      };
+      const close = () => { list.hidden = true; field.setAttribute("aria-expanded", "false"); };
+      const open = () => {
+        list.hidden = false;
+        field.setAttribute("aria-expanded", "true");
+        (list.querySelector(".selected") || list.firstElementChild)?.focus();
+      };
+      const choose = (index) => {
+        select.selectedIndex = index;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        paint();
+        close();
+        field.focus();
+      };
+
+      [...select.options].forEach((option, index) => {
+        const row = document.createElement("div");
+        row.className = "select-option";
+        row.setAttribute("role", "option");
+        row.tabIndex = -1;
+        row.textContent = option.textContent;
+        row.addEventListener("click", () => choose(index));
+        row.addEventListener("keydown", (event) => {
+          const rows = [...list.children];
+          const at = rows.indexOf(row);
+          if (event.key === "ArrowDown") { event.preventDefault(); rows[Math.min(at + 1, rows.length - 1)].focus(); }
+          else if (event.key === "ArrowUp") { event.preventDefault(); (rows[at - 1] || field).focus(); }
+          else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(at); }
+          else if (event.key === "Escape") { event.preventDefault(); close(); field.focus(); }
+        });
+        list.appendChild(row);
+      });
+
+      field.addEventListener("click", () => (list.hidden ? open() : close()));
+      this.shadowRoot.addEventListener("pointerdown", (event) => {
+        if (!list.hidden && !wrap.contains(event.composedPath()[0])) close();
+      });
+      field.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+      });
+      field.disabled = select.disabled;
+      wrap.append(field, list);
+      paint();
+    });
+  }
+
   bind() {
+    this.enhanceSelects();
     this.shadowRoot.querySelector("#register")?.addEventListener("submit", (event) => {
       event.preventDefault();
       this.registerPanel(event.currentTarget);
@@ -2580,6 +2669,47 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
    grid is a single column and there is no row to complete. */
 .panel-card.blank { min-height:0; padding:0; }
 @media (max-width:980px) { .panel-card.blank { display:none; } }
+
+/* 13h ── SELECTS ─────────────────────────────────────────────
+   The list opens inline beneath the field, in the same shape as a
+   band of rows: 1 px rules, hover as a surface lift, the chosen row
+   as a fill with a 3 px edge — the same language as a selected page
+   in the rail. Nothing floats, so nothing is clipped by the
+   inspector's scroll box. */
+
+.select-native { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.select-wrap { position:relative; display:block; }
+
+.select-field {
+  width:100%; height:var(--control); padding:0 var(--s3);
+  display:flex; align-items:center; gap:var(--s2);
+  border:1px solid var(--line); border-radius:var(--radius);
+  background:var(--canvas); color:var(--ink);
+  font:400 14px/1 var(--font); text-align:left;
+}
+.select-field:hover { background:var(--surface-raised); }
+.select-field .chev { color:var(--muted); flex:none; }
+.select-field[aria-expanded="true"] { border-bottom-color:transparent; }
+.select-field:disabled { color:var(--disabled); }
+
+.select-list {
+  border:1px solid var(--line); border-top:0; margin-top:-1px;
+  background:var(--canvas); max-height:260px; overflow:auto;
+}
+.select-option {
+  min-height:var(--row); display:flex; align-items:center;
+  padding:0 var(--s3); font:400 14px/1.3 var(--font); cursor:pointer;
+}
+.select-option + .select-option { border-top:1px solid var(--line); }
+.select-option:hover { background:var(--surface-raised); }
+.select-option.selected { background:var(--accent-wash); box-shadow:inset 3px 0 0 var(--accent); }
+.select-option:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.select-option.selected:focus-visible { box-shadow:none; }
+
+/* In a settings row the field is the right-hand column, so its list
+   belongs under that column rather than across the whole row. */
+.settings-card > label .select-wrap, .workspace-panel fieldset > label .select-wrap { grid-column:2; grid-row:1; }
+.settings-card > label:has(.select-wrap), .workspace-panel fieldset > label:has(.select-wrap) { align-items:start; }
 
 /* 14 ── UTILITIES AND RESPONSIVE ──────────────────────────── */
 
