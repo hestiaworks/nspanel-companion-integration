@@ -36,6 +36,11 @@ const width = Number(opt("width", 1440));
 const height = Number(opt("height", 900));
 const light = args.includes("--light");
 const settle = Number(opt("settle", 900));
+// Some states are reached by clicking, not by a URL — a selected slot most
+// of all. This drives the element the way a person would.
+const select = opt("select", null);
+/** Click something by id after mount, for states that are behind a button. */
+const click = opt("click", null);
 
 const work = mkdtempSync(join(tmpdir(), "nspanel-preview-"));
 writeFileSync(join(work, "panel.js"), `${execFileSync("cat", [PANEL])}`);
@@ -53,6 +58,13 @@ writeFileSync(join(work, "harness.html"), `<!doctype html>
   ${light ? 'el.classList.add("light");' : ""}
   document.getElementById("host").appendChild(el);
   el.hass = fakeHass();
+  ${click === null ? "" : `
+  await new Promise((done) => setTimeout(done, 400));
+  el.shadowRoot.querySelector(${JSON.stringify(click)})?.click();`}
+  ${select === null ? "" : `
+  await new Promise((done) => setTimeout(done, 400));
+  const slot = el.shadowRoot.querySelector('[data-select-widget="${select}"]');
+  if (slot) slot.click();`}
 </script>`);
 
 // Served over http rather than opened as a file: Chrome refuses ES module

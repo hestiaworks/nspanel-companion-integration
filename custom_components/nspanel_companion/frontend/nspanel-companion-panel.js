@@ -172,13 +172,19 @@ class NSPanelCompanionPanel extends HTMLElement {
     }
     if (!this.loaded) return;
     if (this.editor?.panel.panel_id === route.panelId) {
-      this.editor.activePageId = route.tab === "pages" ? route.pageId : null;
+      this.editor.activePageId = route.tab === "pages"
+        ? route.pageId || this.editor.draftPages[0]?.id || null
+        : null;
       this.selectWorkspaceTab(route.tab, false);
       this.render();
       return;
     }
     if (this.panels.some((panel) => panel.panel_id === route.panelId)) {
       await this.editPanel(route.panelId, route.tab, false, route.pageId);
+      if (route.tab === "pages" && !this.editor?.activePageId && this.editor?.draftPages?.length) {
+        this.editor.activePageId = this.editor.draftPages[0].id;
+        this.render();
+      }
     } else {
       history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
     }
@@ -526,11 +532,16 @@ class NSPanelCompanionPanel extends HTMLElement {
     });
   }
 
+  /**
+   * Keep the draft in step with the fields as they are typed.
+   *
+   * It used to redraw a skinned preview beside the form as well. The board
+   * replaced that, and the board is not redrawn on every keystroke: doing so
+   * would take the focus out of the field being typed into. It catches up on
+   * the next selection, which is when it is looked at.
+   */
   refreshPagePreview() {
     this.syncPageDraftFromDom();
-    const page = this.editor?.draftPages.find((item) => item.id === this.editor.activePageId);
-    const host = this.shadowRoot.querySelector(".panel-preview-host");
-    if (page && host) host.innerHTML = this.pagePreview(page);
   }
 
   pageIdFor(title) {
@@ -584,6 +595,7 @@ class NSPanelCompanionPanel extends HTMLElement {
   selectDraftPage(pageId) {
     this.syncPageDraftFromDom();
     this.editor.activePageId = pageId;
+    this.editor.selectedWidgetIndex = null;
     history.pushState(null, "", this.workspaceRoute(this.editor.panel.panel_id, "pages", pageId));
     this.render();
   }
@@ -594,6 +606,14 @@ class NSPanelCompanionPanel extends HTMLElement {
     if (type === "camera") return { type, incoming_audio: false, show_intercom: false };
     if (type === "history") return { type, history_range: "24h" };
     return { type };
+  }
+
+  /** Show the type picker in the inspector, for the next empty slot. */
+  openAddComponent(pageId) {
+    if (!this.editor) return;
+    this.editor.adding = pageId;
+    this.editor.selectedWidgetIndex = null;
+    this.render();
   }
 
   addDraftWidget(pageId, type) {
@@ -956,6 +976,10 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.shadowRoot.querySelector("#refresh-panel-finder")?.addEventListener("click", () => this.scanPanels());
     this.shadowRoot.querySelector("#passive-discovery")?.addEventListener("change", (event) => this.setPassivePanelDiscovery(event.currentTarget.checked));
     this.shadowRoot.querySelectorAll("[data-select-panel]").forEach((button) =>
+      button.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); button.click(); }
+      }));
+    this.shadowRoot.querySelectorAll("[data-select-panel]").forEach((button) =>
       button.addEventListener("click", () => {
         const panel = this.discoveredPanels.find((item) => item.id === button.dataset.selectPanel);
         if (panel) this.connectDiscoveredPanel(panel);
@@ -968,6 +992,46 @@ class NSPanelCompanionPanel extends HTMLElement {
       button.addEventListener("click", () => this.closeWorkspace()));
     this.shadowRoot.querySelectorAll("[data-workspace-tab]").forEach((button) =>
       button.addEventListener("click", () => this.selectWorkspaceTab(button.dataset.workspaceTab)));
+    // The board is the selector: clicking a slot is what opens its form.
+    this.shadowRoot.querySelectorAll("[data-select-widget]").forEach((slot) => {
+      const choose = () => {
+        this.syncPageDraftFromDom();
+        this.editor.selectedWidgetIndex = Number(slot.dataset.selectWidget);
+        this.render();
+      };
+      slot.addEventListener("click", choose);
+      slot.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(); }
+      });
+    });
+    this.shadowRoot.querySelectorAll("[data-add-slot]").forEach((slot) => {
+      const add = () => { this.syncPageDraftFromDom(); this.openAddComponent(slot.dataset.addSlot); };
+      slot.addEventListener("click", add);
+      slot.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); add(); }
+      });
+    });
+    this.shadowRoot.querySelectorAll("[data-select-page]").forEach((item) =>
+      item.addEventListener("click", (event) => {
+        if (event.target.closest("[data-page-drag]")) return;
+        this.syncPageDraftFromDom();
+        this.selectDraftPage(item.dataset.selectPage);
+      }));
+    this.shadowRoot.querySelector("#add-page-rail")?.addEventListener("click", () => this.addDraftPage());
+    this.shadowRoot.querySelector("#cancel-add")?.addEventListener("click", () => {
+      this.editor.adding = null;
+      this.render();
+    });
+    this.shadowRoot.querySelectorAll("[data-add-type]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.editor.adding = null;
+        this.addDraftWidget(button.dataset.addPage, button.dataset.addType);
+      }));
+    this.shadowRoot.querySelector("#clear-selection")?.addEventListener("click", () => {
+      this.syncPageDraftFromDom();
+      this.editor.selectedWidgetIndex = null;
+      this.render();
+    });
     this.shadowRoot.querySelector("#save-workspace")?.addEventListener("click", () => this.saveWorkspace());
     this.shadowRoot.querySelector("#revert-workspace")?.addEventListener("click", () => {
       // Every field is redrawn from what the server last gave us, so throwing
@@ -1211,8 +1275,34 @@ class NSPanelCompanionPanel extends HTMLElement {
 
   panelFinderDialog() {
     const selected = this.pairingSelection;
-    if (selected) return `<div class="scrim"><section class="dialog pairing-dialog"><div class="pairing-dialog-head"><button id="back-to-panels" type="button">← Back</button><span class="eyebrow">Pair panel</span></div><div class="pairing-dialog-body"><h2>${escapeHtml(selected.name)}</h2><p class="device-id">${escapeHtml(selected.device_id)}</p><p class="pairing-help">Enter the six-digit code displayed on this panel.</p><form class="pairing-form" data-panel-pair><input type="hidden" name="request_id" value="${escapeHtml(selected.request_id)}"><input class="pair-code pairing-entry" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus required placeholder="000000" aria-label="Pairing code"><div class="actions pairing-actions"><button id="close-panel-finder" type="button">Cancel</button><button class="primary" ${this.busy ? "disabled" : ""}>Pair panel</button></div></form></div></section></div>`;
-    return `<div class="scrim"><section class="dialog"><div class="editor-head"><div><span class="eyebrow">Local discovery</span><h2>Find panels</h2><p>${this.busy ? "Scanning the local network…" : "Unpaired panels available on this network."}</p></div><button id="close-panel-finder">Close</button></div>${this.discoveredPanels.length ? `<div class="finder-list">${this.discoveredPanels.map((item) => `<button class="finder-panel" data-select-panel="${escapeHtml(item.id)}" ${this.busy ? "disabled" : ""}><span class="device-icon">▣</span><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.id)}</small></span><span>›</span></button>`).join("")}</div>` : `<div class="empty"><b>${this.busy ? "Searching for panels…" : "No unpaired panels found"}</b><span>Keep the pairing screen open on the NSPanel and try again.</span></div>`}<label class="check discovery-option"><input id="passive-discovery" type="checkbox" ${this.passivePanelDiscovery ? "checked" : ""} ${this.busy ? "disabled" : ""}> Keep panel discovery running in the background</label><small>Off by default. When disabled, HA scans only after you press Find panels or Search again.</small><div class="actions"><button id="refresh-panel-finder" ${this.busy ? "disabled" : ""}>Search again</button></div></section></div>`;
+    if (selected) return `<div class="scrim"><section class="dialog">
+      <div class="dialog-head"><button id="back-to-panels" class="quiet small" type="button">← Back</button>
+        <div class="grow"><span class="t-label">Pair panel</span><h2>${escapeHtml(selected.name)}</h2>
+          <p class="mono">${escapeHtml(selected.device_id)}</p></div></div>
+      <div class="dialog-body">
+        <p class="t-small">Enter the six digits shown on the panel.</p>
+        <form data-panel-pair><input type="hidden" name="request_id" value="${escapeHtml(selected.request_id)}">
+          <input class="pair-code entry" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus required placeholder="000000" aria-label="Pairing code">
+          <div class="actions"><button id="close-panel-finder" type="button">Cancel</button>
+            <button class="primary" ${this.busy ? "disabled" : ""}>Pair panel</button></div></form>
+      </div></section></div>`;
+    return `<div class="scrim"><section class="dialog">
+      <div class="dialog-head"><div class="grow"><span class="t-label">Local discovery</span><h2>Find panels</h2>
+        <p>${this.busy ? "Scanning the local network…" : "Unpaired panels on this network."}</p></div>
+        <button id="close-panel-finder" class="quiet icon" title="Close">✕</button></div>
+      ${this.discoveredPanels.length
+        ? this.discoveredPanels.map((item) => `<div class="row tall interactive" data-select-panel="${escapeHtml(item.id)}" tabindex="0">
+            <span class="device-icon small">▣</span>
+            <div class="grow"><div class="t-control">${escapeHtml(item.name)}</div><div class="id">${escapeHtml(item.id)}</div></div>
+            <span class="chev">›</span></div>`).join("")
+        : `<div class="dialog-body"><div class="empty"><span class="glyph">▣</span>
+            <b class="t-sub">${this.busy ? "Searching…" : "No unpaired panels found"}</b>
+            <p>Open the companion app on the panel and leave its pairing screen visible.</p></div></div>`}
+      <div class="dialog-body">
+        <label class="check"><input id="passive-discovery" type="checkbox" ${this.passivePanelDiscovery ? "checked" : ""} ${this.busy ? "disabled" : ""}> Keep discovery running in the background</label>
+        <p class="t-small" style="margin-top:8px">Off by default. Home Assistant otherwise scans only when you ask.</p>
+        <div class="actions"><button id="refresh-panel-finder" ${this.busy ? "disabled" : ""}>Search again</button></div>
+      </div></section></div>`;
   }
 
   /**
@@ -1263,7 +1353,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     const paired = this.updater?.paired;
     const head = `<div class="head"><span class="name">Installation &amp; updates</span>
       <span class="what">Discover ADB panels and install signed releases</span><span class="spacer"></span>
-      <span class="status ${paired ? "online" : "offline"}">${paired ? "connected" : "not set up"}</span></div>`;
+      <span class="status ${paired ? "online" : "offline"}">${paired ? "Updater add-on connected" : "not set up"}</span></div>`;
     if (!paired) {
       return `<section class="service inactive">${head}
         <div class="foot">Start the NSPanel Companion Updater add-on — it connects here on its own.</div>
@@ -1278,30 +1368,13 @@ class NSPanelCompanionPanel extends HTMLElement {
       <form class="detail" id="adb-discovery">
         <div class="grow"><input id="adb-subnet" name="subnet" value="192.168.0.0/24" pattern="[0-9./]+" required aria-label="Private subnet"></div>
         <button class="small" ${this.busy ? "disabled" : ""}>${this.busy ? "Working…" : "Scan subnet"}</button>
-        <button type="button" class="small quiet" id="updater-unpair" ${this.busy ? "disabled" : ""}>Unpair</button>
+        ${this.updater?.paired?.source === "manual" ? `<button type="button" class="small quiet" id="updater-unpair" ${this.busy ? "disabled" : ""}>Unpair</button>` : ""}
       </form>
       ${this.updaterMessage ? `<div class="detail"><div class="notice plain grow">${escapeHtml(this.updaterMessage)}</div></div>` : ""}
       ${this.adbDevices.length ? this.adbDevices.map((device) => this.adbDeviceCard(device)).join("") : `<div class="foot">No devices yet — scan the subnet above.</div>`}</section>`;
   }
 
-  scryptedSection() {
-    const pairedIds = new Set((this.scrypted.paired || []).map((item) => item.id));
-    const available = (this.scrypted.discovered || []).filter((item) => !pairedIds.has(item.id));
-    if (!available.length && !(this.scrypted.paired || []).length) {
-      return `<section class="bridge"><div><h2>Scrypted intercom</h2><p>Install and enable NSPanel Talkback in Scrypted. It will appear here automatically.</p></div><span class="status waiting">Searching…</span></section>`;
-    }
-    return `<section class="bridge"><div><h2>Scrypted intercom</h2><p>Pair once to configure video and two-way audio without URLs or access keys.</p></div>
-      <div class="bridge-list">
-        ${(this.scrypted.paired || []).map((item) => `<div class="bridge-row"><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.base_url)}</small></div><span class="status online">Paired</span><button data-scrypted-unpair="${escapeHtml(item.id)}" ${this.busy ? "disabled" : ""}>Unpair</button><button class="danger" data-scrypted-clear="${escapeHtml(item.id)}" ${this.busy ? "disabled" : ""}>Unpair + clear doorbells</button></div>`).join("")}
-        ${available.map((item) => `<form class="bridge-row" data-scrypted-pair><input type="hidden" name="base_url" value="${escapeHtml(item.base_url)}"><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.base_url)} · v${escapeHtml(item.version)}</small></div><input class="pair-code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required placeholder="6-digit code"><button class="primary" ${this.busy ? "disabled" : ""}>Pair</button></form>`).join("")}
-      </div></section>`;
-  }
 
-  updaterSection() {
-    const paired = this.updater?.paired;
-    if (!paired) return `<section class="updater-section"><div class="updater-head"><div><h2>Panel installation & updates</h2><p>Optional: pair the NSPanel Updater add-on to discover ADB-enabled panels and install signed releases.</p></div></div><small>Install and start the NSPanel Companion Updater add-on and it will connect here on its own.</small><details class="updater-manual"><summary>The updater runs on another host</summary><form id="updater-pair" class="updater-pair"><label>Updater URL<input name="base_url" type="url" value="http://${escapeHtml(location.hostname)}:8098" required></label><label>Pairing code<input name="code" class="pair-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required></label><button ${this.busy ? "disabled" : ""}>Pair manually</button></form><small>Copy the six-digit code from the add-on log.</small></details></section>`;
-    return `<section class="updater-section"><div class="updater-head"><div><h2>Panel installation & updates</h2><p>Scan only when requested. Updates require confirmation and restore the app as Home.</p></div><div class="updater-status"><span class="status online">Updater add-on connected</span>${this.updater?.paired?.source === "manual" ? `<button id="updater-unpair" ${this.busy ? "disabled" : ""}>Unpair</button>` : ""}</div></div><form id="adb-discovery" class="adb-scan"><label>Private subnet<input id="adb-subnet" name="subnet" value="192.168.0.0/24" pattern="[0-9./]+" required></label><button class="primary" ${this.busy ? "disabled" : ""}>${this.busy ? "Working…" : "Discover ADB panels"}</button></form>${this.updaterMessage ? `<div class="notice">${escapeHtml(this.updaterMessage)}</div>` : ""}${this.adbDevices.length ? `<div class="adb-devices">${this.adbDevices.map((device) => this.adbDeviceCard(device)).join("")}</div>` : ""}</section>`;
-  }
 
   adbDeviceCard(device) {
     const safe = ["nspanel-companion", "probable-nspanel"].includes(device.classification) && device.adb_state === "device";
@@ -1313,10 +1386,14 @@ class NSPanelCompanionPanel extends HTMLElement {
   }
 
   tokenDialog() {
-    return `<div class="scrim"><section class="dialog"><span class="success-mark">✓</span><h2>${escapeHtml(this.token.title)}</h2>
-      <p>Save this token now. Home Assistant will not display it again.</p>
-      <label>Panel token<div class="token"><code>${escapeHtml(this.token.value)}</code><button id="copy-token">Copy</button></div></label>
-      <div class="actions"><button id="download-token">Download credentials</button><button id="close-token" class="primary">I saved it</button></div></section></div>`;
+    return `<div class="scrim"><section class="dialog ok">
+      <div class="dialog-head"><div class="grow"><span class="t-label">Panel paired</span>
+        <h2>Save this token now</h2>
+        <p>Home Assistant will not display it again. Rotating it later requires re-pairing the panel.</p></div></div>
+      <div class="dialog-body">
+        <div class="token-field"><code class="mono">${escapeHtml(this.token.value)}</code><button id="copy-token">Copy</button></div>
+        <div class="actions split"><button id="download-token">Download</button><button id="close-token" class="primary">I saved it</button></div>
+      </div></section></div>`;
   }
 
   entityOptions(domains, selected, emptyLabel) {
@@ -1396,16 +1473,154 @@ class NSPanelCompanionPanel extends HTMLElement {
       configuration = `<label>Scrypted camera<select data-camera-source ${field("scrypted_source")} required><option value="">Select camera</option>${this.scryptedDoorbells.map((item) => { const value = `${item.bridge_id}|${item.id}`; return `<option value="${escapeHtml(value)}" ${selectedCamera === value ? "selected" : ""}>${escapeHtml(item.name)}</option>`; }).join("")}</select></label><div class="inline-checks"><label class="check"><input type="checkbox" ${field("incoming_audio")} ${widget.incoming_audio ? "checked" : ""}> Play incoming audio</label></div><label class="check"><input type="checkbox" ${field("show_intercom")} ${widget.show_intercom || widget.tap_action === "intercom" ? "checked" : ""}> Show intercom button</label><small>Adds a hold-to-talk button under the picture. The page is already full-screen, so tapping it does nothing.</small></label><small>The stream starts only while this page is visible and stops immediately after swiping away.</small>`;
     }
     if (widget.type === "controls") configuration = `<div class="notice draft-note">Legacy component: it automatically selects the first four supported controls. Replace it with explicit Home control components for predictable layouts.</div>`;
-    return `<article class="widget-card" data-widget-drop="${index}" data-widget-page="${escapeHtml(page.id)}"><div class="widget-drag" draggable="true" data-widget-drag="${index}" data-widget-page="${escapeHtml(page.id)}" title="Drag to reorder">⠿</div><div class="widget-body"><div class="widget-title"><div><span class="eyebrow">Component ${index + 1}</span><h4>${escapeHtml(this.widgetName(widget))}</h4></div><button class="danger" type="button" data-widget-action="delete" data-widget-index="${index}" data-widget-page="${escapeHtml(page.id)}">Remove</button></div>${configuration}<label>Custom label <span class="optional">Optional</span><input ${field("label")} maxlength="48" value="${escapeHtml(widget.label || "")}" placeholder="Use the Home Assistant name"></label></div></article>`;
+    return `<article class="widget-card" data-widget-drop="${index}" data-widget-page="${escapeHtml(page.id)}"><div class="widget-body">${configuration}<label>Custom label <span class="optional">Optional</span><input ${field("label")} maxlength="48" value="${escapeHtml(widget.label || "")}" placeholder="Use the Home Assistant name"></label></div></article>`;
   }
 
-  pageComponentEditor(page) {
-    if (!page) return "";
-    const hasFullScreen = page.widgets.some((widget) => ["thermostat", "weather", "camera"].includes(widget.type));
-    const controlLimitReached = page.widgets.some((widget) => ["controls", "entity_button"].includes(widget.type)) && page.widgets.length >= 4;
-    const addDisabled = hasFullScreen || page.widgets.length >= 12 || controlLimitReached;
-    return `<div class="scrim page-editor-scrim"><section class="dialog page-editor"><div class="component-head"><div><span class="eyebrow">Edit page</span><h2>${escapeHtml(page.title || "Untitled page")}</h2><p>Configure the native components and see an approximate panel preview.</p></div><button type="button" data-close-page-components>Done</button></div><div class="page-editor-grid"><section class="component-editor">${page.widgets.length ? `<div class="widget-list">${page.widgets.map((widget, index) => this.widgetEditor(page, widget, index)).join("")}</div>` : `<div class="empty compact"><b>This page is empty</b><span>Add its first native component below.</span></div>`}<div class="add-widget"><label>Component type<select id="new-widget-type" ${addDisabled ? "disabled" : ""}><option value="entity_button">Home control</option><option value="sensor">Sensor</option><option value="thermostat">Thermostat</option><option value="weather">Weather</option><option value="camera">Camera</option><option value="history">History</option>${this.editor?.layout?.intercom?.enabled ? '<option value="intercom">Intercom</option>' : ""}</select></label><button id="add-widget" data-widget-page="${escapeHtml(page.id)}" class="primary" type="button" ${addDisabled ? "disabled" : ""}>Add component</button></div>${hasFullScreen ? `<small>This full-screen component must remain the only component on this page.</small>` : controlLimitReached ? `<small>Controls pages support at most four controls for reliable touch targets.</small>` : ""}</section><aside class="preview-column"><span class="eyebrow">Panel preview</span><div class="panel-preview-host">${this.pagePreview(page, true)}</div><small>Approximate preview at the NSPanel Pro aspect ratio. The Android app remains the rendering authority.</small></aside></div></section></div>`;
+  /**
+   * The page editor: pages, board, inspector (§8).
+   *
+   * It replaced a dialog opened from inside another dialog, where every
+   * component's form was expanded at once in one scrolling column and the
+   * preview — the only thing showing the result — took no part in the work.
+   * Here the board *is* the selector, and exactly one form is on screen.
+   */
+  pageEditorRoute(page) {
+    const { panel } = this.editor;
+    const dirty = this.editor.dirty?.size || 0;
+    const index = this.editor.draftPages.indexOf(page);
+    return `<div class="app-bar">
+        <span class="mark"></span>
+        <div class="crumbs"><a href="#" data-close-editor>Panels</a><span class="sep">/</span>
+          <a href="#" data-close-page-components>${escapeHtml(panel.name)}</a><span class="sep">/</span><span class="here">Pages</span></div>
+        <span class="spacer"></span>
+        <span class="save-state ${dirty ? "dirty" : ""}" id="save-state">${dirty ? `${dirty} unsaved change${dirty === 1 ? "" : "s"}` : "No unsaved changes"}</span>
+        <button type="button" id="revert-workspace" ${this.busy ? "disabled" : ""}>Revert</button>
+        <button type="button" id="save-workspace" class="primary" ${this.busy ? "disabled" : ""}>Save layout</button>
+      </div>
+      <div class="editor">
+        ${this.pageRail(page)}
+        ${this.pageBoard(page, index)}
+        ${this.pageInspector(page)}
+      </div>`;
   }
+
+  /** Left: the pages of this panel, in swipe order. */
+  pageRail(active) {
+    const pages = this.editor.draftPages;
+    return `<div class="rail">
+      <div class="rail-head"><span class="t-label">Pages · swipe order</span></div>
+      ${pages.map((page, index) => `<div class="page-item ${page.id === active.id ? "selected" : ""}"
+          data-select-page="${escapeHtml(page.id)}" data-page-drop="${index}">
+          <span class="index">${String(index + 1).padStart(2, "0")}</span>
+          <div class="grow"><div class="name truncate">${escapeHtml(page.title || "Untitled")}</div>
+            <div class="meta">${describePage(page)}</div></div>
+          <span class="drag" data-page-drag="${index}" draggable="true" title="Drag to reorder">⠿</span>
+        </div>`).join("")}
+      <div class="add-page" id="add-page-rail" role="button" tabindex="0">＋ Add page</div>
+      <div class="rail-foot">Panels swipe left to right in this order. The default page is set under General.</div>
+    </div>`;
+  }
+
+  /**
+   * Centre: the page as a schematic, which is also the selector.
+   *
+   * A wireframe on purpose — monospace, one accent, no panel colours — so it
+   * is never mistaken for a rendering of the panel. The app remains the
+   * rendering authority.
+   */
+  pageBoard(page, pageIndex) {
+    const widgets = page.widgets || [];
+    const full = widgets.some((widget) => ["thermostat", "weather", "camera", "history", "intercom"].includes(widget.type));
+    const capacity = full ? 1 : 4;
+    const slots = widgets.map((widget, index) => {
+      const selected = this.editor.selectedWidgetIndex === index;
+      const entity = widget.entity_id ? escapeHtml(widget.entity_id) : "";
+      const flags = widgetFlags(widget);
+      return `<div class="slot ${selected ? "selected" : ""}" data-select-widget="${index}" data-slot-drop="${index}" tabindex="0">
+        <span class="kind">${full ? "FULL SCREEN" : `SLOT ${index + 1}`} · ${escapeHtml(widget.type.toUpperCase())}</span>
+        <span class="name truncate">${escapeHtml(widget.label || this.widgetName(widget))}</span>
+        ${entity ? `<span class="id truncate">${entity}</span>` : ""}
+        ${flags ? `<span class="flags">${escapeHtml(flags)}</span>` : ""}
+      </div>`;
+    }).join("");
+    const empties = Math.max(0, capacity - widgets.length);
+    const adders = Array.from({ length: empties }, () =>
+      `<div class="slot empty" data-add-slot="${escapeHtml(page.id)}" tabindex="0" role="button">
+        <span class="plus">＋</span><span class="kind">ADD COMPONENT</span></div>`).join("");
+    return `<div class="stage">
+      <div class="stage-head"><span class="t-control">${escapeHtml(page.title || "Untitled")}</span>
+        <span class="id">page id · ${escapeHtml(page.id)}</span><span class="grow"></span>
+        <span class="t-label">480 × 480 · schematic</span></div>
+      <div class="board">
+        <div class="board-status"><span>STATUS BAR · CLOCK · MIC</span>
+          <span class="pager">${this.editor.draftPages.map((_, index) => `<i class="${index === pageIndex ? "on" : ""}"></i>`).join("")}</span></div>
+        <div class="slots ${full ? "full" : ""}">${slots}${adders}</div>
+      </div>
+      <div class="stage-foot"><span class="grow">${full ? "One slot, no add affordance. Swapping the type is the only edit the board offers." : `Click a slot to edit it · slot ${widgets.length} of ${capacity}`}</span>
+        <button type="button" class="small" data-page-action="duplicate" data-page-index="${pageIndex}" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Duplicate page</button>
+        <button type="button" class="small danger quiet" data-page-action="delete" data-page-index="${pageIndex}">Delete page</button></div>
+    </div>`;
+  }
+
+  /** The component types, with why each one is or is not available here. */
+  addComponentPanel(page) {
+    const widgets = page.widgets || [];
+    const full = ["thermostat", "weather", "camera", "history", "intercom"];
+    const occupied = widgets.length > 0;
+    const hasFull = widgets.some((widget) => full.includes(widget.type));
+    const types = [
+      ["entity_button", "Home control", "Light, fan, switch, cover", hasFull || widgets.length >= 4],
+      ["sensor", "Sensor", "One reading, no controls", hasFull],
+      ["thermostat", "Thermostat", "Full screen — needs an empty page", occupied],
+      ["weather", "Weather", "Full screen — needs an empty page", occupied],
+      ["camera", "Camera", "Full screen — needs Scrypted", occupied],
+      ["history", "History", "Full screen — one entity over time", occupied],
+    ];
+    if (this.editor?.layout?.intercom?.enabled) {
+      types.push(["intercom", "Intercom", "Full screen — call another panel", occupied]);
+    }
+    return `<div class="inspector">
+      <div class="inspector-head"><span class="t-label accent">Add to slot ${widgets.length + 1}</span>
+        <span class="grow"></span>
+        <button type="button" class="quiet small" id="cancel-add" title="Close">✕</button></div>
+      <div class="inspector-body" style="padding:0">
+        <div class="add-grid">${types.map(([type, name, note, disabled]) => `
+          <button type="button" data-add-type="${type}" data-add-page="${escapeHtml(page.id)}" ${disabled ? "disabled" : ""}>
+            <b>${name}</b><small>${note}</small></button>`).join("")}</div>
+      </div>
+    </div>`;
+  }
+
+  /** Right: exactly one thing — the selected slot, or the page itself. */
+  pageInspector(page) {
+    if (this.editor.adding === page.id) return this.addComponentPanel(page);
+    const index = this.editor.selectedWidgetIndex;
+    const widget = index === null || index === undefined ? null : page.widgets?.[index];
+    if (!widget) {
+      return `<div class="inspector">
+        <div class="inspector-head"><span class="t-label">Page</span></div>
+        <div class="inspector-body">
+          <label class="field"><span class="label">Title</span>
+            <input data-page-title="${this.editor.draftPages.indexOf(page)}" maxlength="48" value="${escapeHtml(page.title || "")}"></label>
+          <label class="field"><span class="label">Page ID</span>
+            <input class="mono" value="${escapeHtml(page.id)}" readonly>
+            <span class="hint">Set when the page is created; the panel remembers it across publishes.</span></label>
+          <div class="field"><span class="label">Components</span>
+            <span class="hint">${describePage(page)}. Thermostat, weather, camera, history and intercom are full-screen: choosing one clears the other slots.</span></div>
+        </div>
+      </div>`;
+    }
+    return `<div class="inspector">
+      <div class="inspector-head"><span class="t-label accent">Slot ${index + 1} · ${escapeHtml(this.widgetName(widget))}</span>
+        <span class="grow"></span>
+        <button type="button" class="quiet small" id="clear-selection" title="Close">✕</button></div>
+      <div class="inspector-body">
+        ${this.widgetEditor(page, widget, index)}
+        <div class="push"><button type="button" class="danger quiet" data-widget-action="delete" data-widget-index="${index}" data-widget-page="${escapeHtml(page.id)}">Remove component</button></div>
+      </div>
+    </div>`;
+  }
+
 
   previewEntity(widget) {
     return this._hass?.states?.[widget.entity_id] || null;
@@ -1415,86 +1630,13 @@ class NSPanelCompanionPanel extends HTMLElement {
     return ({ "clear-night": "☾", sunny: "☀", partlycloudy: "◑", cloudy: "☁", rainy: "☂", pouring: "☔", lightning: "ϟ", "lightning-rainy": "ϟ", snowy: "❄", "snowy-rainy": "❄", fog: "≋", windy: "≈", hail: "◆" })[condition] || "◌";
   }
 
-  miniaturePagePreview(page, dark) {
-    const widgets = page.widgets || [];
-    const panel = (body, kind) => `<div class="panel-preview ${dark ? "dark" : "light"} miniature summary-preview"><div class="preview-page-title">${escapeHtml(page.title || "Untitled")}</div><div class="summary-body ${kind}">${body}</div><div class="preview-dots">● ○ ○</div></div>`;
-    if (!widgets.length) return panel(`<div class="summary-empty">No components configured</div>`, "empty");
-    const weather = widgets.find((widget) => widget.type === "weather");
-    if (weather) {
-      const entity = this.previewEntity(weather);
-      const condition = entity?.state || "partlycloudy";
-      const label = condition.replaceAll("-", " ").replace("partlycloudy", "Partly cloudy");
-      const temperature = entity?.attributes?.temperature ?? "24";
-      const apparent = entity?.attributes?.apparent_temperature ?? temperature;
-      return panel(`<div class="summary-weather-main"><i>${this.weatherGlyph(condition)}</i><div><strong>${escapeHtml(temperature)}°</strong><b>${escapeHtml(label)}</b><small>Feels like ${escapeHtml(apparent)}°</small></div></div><div class="summary-tags"><span>${weather.show_hourly !== false ? "Hourly forecast" : "No hourly forecast"}</span><span>${Number(weather.forecast_days ?? 5)}-day forecast</span></div>`, "weather");
-    }
-    const thermostat = widgets.find((widget) => widget.type === "thermostat");
-    if (thermostat) {
-      const entity = this.previewEntity(thermostat);
-      const current = entity?.attributes?.current_temperature ?? "21.5";
-      const heat = entity?.attributes?.target_temp_low ?? entity?.attributes?.temperature ?? "20";
-      const cool = entity?.attributes?.target_temp_high ?? entity?.attributes?.temperature ?? "24";
-      return panel(`<div class="summary-climate-current"><small>Current</small><strong>${escapeHtml(current)}°</strong></div><div class="summary-climate-targets"><span><small>Heat below</small><b>${escapeHtml(heat)}°</b></span><span><small>Cool above</small><b>${escapeHtml(cool)}°</b></span></div><div class="summary-tags"><span>Heat</span><span>Cool</span><span>Auto</span><span>Dry</span></div>`, "climate");
-    }
-    const camera = widgets.find((widget) => widget.type === "camera");
-    if (camera) {
-      const entity = this.previewEntity(camera);
-      const name = camera.label || entity?.attributes?.friendly_name || "Camera";
-      return panel(`<div class="summary-camera"><i>▶</i><strong>${escapeHtml(name)}</strong><small>Full-page camera</small></div><div class="summary-tags"><span>${camera.incoming_audio ? "Audio on" : "Muted"}</span><span>${camera.show_intercom ? "Intercom" : "View only"}</span></div>`, "camera");
-    }
-    const rows = widgets.slice(0, 4).map((widget) => {
-      const entity = this.previewEntity(widget);
-      const name = widget.label || entity?.attributes?.friendly_name || this.widgetName(widget);
-      const automatic = entity?.entity_id?.startsWith("fan.") ? "fan" : entity?.entity_id?.startsWith("cover.") ? "curtains" : entity?.entity_id?.startsWith("switch.") ? "power" : "light";
-      const iconId = (widget.icon || "auto") === "auto" ? automatic : widget.icon;
-      const glyph = CONTROL_ICONS.find(([id]) => id === iconId)?.[2] || "✦";
-      const type = automatic === "power" ? "Switch" : automatic === "curtains" ? "Curtains" : automatic.charAt(0).toUpperCase() + automatic.slice(1);
-      const capabilities = [widget.show_timer !== false && automatic !== "curtains" ? "Timer" : "", widget.show_fan_speed === true && automatic === "fan" ? "Speed" : "", automatic === "curtains" ? "Position" : ""].filter(Boolean).join(" · ");
-      return `<div class="summary-control-row"><i>${glyph}</i><div><b title="${escapeHtml(name)}">${escapeHtml(name)}</b><small>${escapeHtml(type)}${capabilities ? ` · ${escapeHtml(capabilities)}` : ""}</small></div><span>${escapeHtml(entity?.state || "—")}</span></div>`;
-    }).join("");
-    return panel(`${rows}${widgets.length > 4 ? `<small class="summary-more">+${widgets.length - 4} more components</small>` : ""}`, "controls");
-  }
 
-  pagePreview(page, miniature = false) {
-    const dark = this.editor?.draftThemeMode === "dark" || this.editor?.draftThemeMode === "inherit" && Boolean(this._hass?.themes?.darkMode);
-    if (miniature) return this.miniaturePagePreview(page, dark);
-    const widgets = page.widgets || [];
-    const denseControls = widgets.filter((widget) => widget.type === "entity_button").length > 2;
-    const widgetMarkup = widgets.length ? widgets.map((widget) => {
-      const entity = this.previewEntity(widget);
-      const name = widget.label || entity?.attributes?.friendly_name || this.widgetName(widget);
-      if (widget.type === "thermostat") {
-        const actual = entity?.attributes?.current_temperature ?? "21.5";
-        const heat = entity?.attributes?.target_temp_low ?? entity?.attributes?.temperature ?? "20";
-        const cool = entity?.attributes?.target_temp_high ?? entity?.attributes?.temperature ?? "24";
-        return `<div class="preview-climate dual"><div class="climate-ring"><svg class="climate-dial" viewBox="0 0 200 200" aria-hidden="true"><path class="dial-track" d="M 44.85 155.15 A 78 78 0 1 1 155.15 155.15"/><path class="dial-heat" d="M 44.85 155.15 A 78 78 0 0 1 44.85 44.85"/><path class="dial-cool" d="M 155.15 44.85 A 78 78 0 0 1 155.15 155.15"/><circle class="dial-handle heat" cx="44.85" cy="44.85" r="6"/><circle class="dial-handle cool" cx="155.15" cy="44.85" r="6"/></svg><small>CURRENT</small><strong>${escapeHtml(actual)}°</strong><div class="ring-target heat">${escapeHtml(heat)}°</div><div class="ring-target cool">${escapeHtml(cool)}°</div></div><div class="target-picker"><button class="selected" type="button"><small>HEAT BELOW</small><b>${escapeHtml(heat)}°</b></button><button type="button"><small>COOL ABOVE</small><b>${escapeHtml(cool)}°</b></button></div><div class="target-stepper"><button type="button">−</button><span>Adjust heat target</span><button type="button">＋</button></div><div class="preview-modes"><b>Heat</b><b>Cool</b><b class="active">Auto</b><b>Fan</b><b>Dry</b><b>Off</b></div></div>`;
-      }
-      if (widget.type === "weather") {
-        const condition = entity?.state || "partlycloudy";
-        const temperature = entity?.attributes?.temperature ?? "24";
-        const conditionLabel = condition.replaceAll("-", " ").replace("partlycloudy", "Partly cloudy");
-        const hourly = ["Now", "15", "16", "17", "18"].map((hour, index) => `<span><small>${hour}</small><i>${this.weatherGlyph(index > 2 ? "partlycloudy" : condition)}</i><b>${Number(temperature) - (index > 3 ? 1 : 0)}°</b></span>`).join("");
-        const dailyConditions = [condition, "sunny", "partlycloudy", "rainy", "cloudy"];
-        const daily = Array.from({ length: Number(widget.forecast_days ?? 5) }, (_, index) => `<span><small>${index ? ["Sat", "Sun", "Mon", "Tue"][index - 1] : "Today"}</small><i>${this.weatherGlyph(dailyConditions[index])}</i><em>${18 + index}°</em><b>${24 - index}°</b></span>`).join("");
-        return `<div class="preview-weather native-weather"><div class="native-weather-main"><div class="weather-now"><i>${this.weatherGlyph(condition)}</i><strong>${escapeHtml(temperature)}°</strong><b>${escapeHtml(conditionLabel)}</b><small>Feels like ${escapeHtml(entity?.attributes?.apparent_temperature ?? temperature)}° · ${escapeHtml(entity?.attributes?.humidity ?? "48")}%</small></div><div class="daily-forecast">${daily}</div></div>${widget.show_hourly !== false ? `<div class="hourly-forecast"><p>${escapeHtml(conditionLabel)} conditions continue.</p><div>${hourly}</div></div>` : ""}</div>`;
-      }
-      if (widget.type === "camera") return `<div class="preview-camera"><span>▶</span><b>${escapeHtml(name)}</b><small>${widget.incoming_audio ? "Audio on" : "Muted"} · ${widget.show_intercom ? "Intercom" : "View only"}</small></div>`;
-      if (widget.type === "sensor") return `<div class="preview-tile sensor"><small>${escapeHtml(name)}</small><strong>${escapeHtml(entity?.state ?? "—")}</strong></div>`;
-      const automatic = entity?.entity_id?.startsWith("fan.") ? "fan" : entity?.entity_id?.startsWith("cover.") ? "curtains" : entity?.entity_id?.startsWith("switch.") ? "power" : "light";
-      const iconId = (widget.icon || "auto") === "auto" ? automatic : widget.icon;
-      const glyph = CONTROL_ICONS.find(([id]) => id === iconId)?.[2] || "✦";
-      const isCover = automatic === "curtains";
-      const fanSpeed = automatic === "fan" && widget.show_fan_speed === true;
-      const typeLabel = automatic === "power" ? "Switch" : automatic === "fan" ? "Fan" : automatic;
-      const detail = isCover ? `Position · ${escapeHtml(entity?.attributes?.current_position ?? "100")}%` : fanSpeed ? `Speed · ${escapeHtml(entity?.attributes?.percentage ?? "0")}%` : escapeHtml(entity?.state || "Off");
-      const primaryAction = isCover ? "Control curtains" : fanSpeed ? "Adjust speed" : "";
-      const timerAction = widget.show_timer !== false && !isCover ? `<div class="control-action">◷&nbsp; Set timer</div>` : "";
-      return `<div class="preview-tile control revised native-control ${denseControls ? "dense" : ""} ${widget.card_tap ? "whole-card" : ""}"><div class="control-head"><i>${glyph}</i>${isCover ? "" : `<button type="button" aria-label="Toggle"><b>${escapeHtml((entity?.state || "off").toUpperCase())}</b></button>`}</div><strong class="control-name ${name.length > 22 ? "long-name" : ""}" title="${escapeHtml(name)}">${escapeHtml(name)}</strong><small>${escapeHtml(typeLabel)}</small><div class="control-detail">${detail}</div>${primaryAction ? `<div class="control-action">${primaryAction}</div>` : timerAction}</div>`;
-    }).join("") : `<div class="preview-empty">Empty page</div>`;
-    return `<div class="panel-preview ${dark ? "dark" : "light"} ${miniature ? "miniature" : ""}"><div class="preview-page-title">${escapeHtml(page.title || "Untitled")}</div><div class="preview-widgets ${widgets.some((widget) => ["thermostat", "weather"].includes(widget.type)) ? "fullscreen" : ""}">${widgetMarkup}</div><div class="preview-dots">● ○ ○</div></div>`;
-  }
 
   editorDialog() {
+    if (this.editor.activePageId) {
+      const page = this.editor.draftPages.find((item) => item.id === this.editor.activePageId);
+      if (page) return this.pageEditorRoute(page);
+    }
     const { panel, layout } = this.editor;
     const doorbell = layout.doorbell || {};
     const selectedScrypted = doorbell.scrypted_bridge_id && doorbell.scrypted_doorbell_id
@@ -1536,11 +1678,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       <form id="layout-editor" class="workspace-layout-form">
         <section class="workspace-panel" data-workspace-panel="pages" ${tab === "pages" ? "" : "hidden"}>
           <div class="workspace-intro"><h3>Pages</h3><p>Create and arrange the screens people reach by swiping on this panel. Changes stay in this workspace until you publish.</p></div>
-          ${this.editor.draftPages.length ? `<div class="page-list visual-page-list">${this.editor.draftPages.map((page, index) => {
-            const components = (page.widgets || []).map((widget) => widget.type.replace("entity_button", "control"));
-            return `<article class="page-card visual-page-card ${this.editor.activePageId === page.id ? "active" : ""}" data-page-drop="${index}"><div class="page-card-top"><div class="page-order" data-page-drag="${index}" draggable="true" title="Drag to reorder" aria-label="Drag ${escapeHtml(page.title)} to reorder"><span>⠿</span><small>${index + 1}</small></div><div class="page-heading"><b>${escapeHtml(page.title)}</b><small>${index === 0 ? "First screen" : `Screen ${index + 1}`}</small></div></div>${this.pagePreview(page, true)}<label>Page name<input data-page-title="${index}" maxlength="48" required value="${escapeHtml(page.title)}"></label><div class="page-meta"><span>${components.length ? `${components.length} component${components.length === 1 ? "" : "s"}: ${escapeHtml([...new Set(components)].join(", "))}` : "No components yet"}</span></div><div class="page-actions"><button class="primary" type="button" data-edit-page="${escapeHtml(page.id)}">Edit page</button><button type="button" data-page-action="duplicate" data-page-index="${index}" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Duplicate</button><button class="danger" type="button" data-page-action="delete" data-page-index="${index}">Delete</button></div></article>`;
-          }).join("")}</div>` : `<div class="unconfigured-notice"><span class="device-icon">＋</span><div><h3>No pages configured</h3><p>This panel is showing its native setup screen. Create its first page below.</p></div></div>`}
-          ${this.pageComponentEditor(this.editor.draftPages.find((page) => page.id === this.editor.activePageId))}
+          ${this.editor.draftPages.length ? "" : `<div class="unconfigured-notice"><span class="device-icon">＋</span><div><h3>No pages configured</h3><p>This panel is showing its native setup screen. Create its first page below.</p></div></div>`}
           <div class="add-page"><label>New page name<input id="new-page-title" maxlength="48" placeholder="For example: Climate or Lights" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}></label><button id="add-page" type="button" class="primary" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Add page</button></div>
           ${this.editor.draftPages.some((page) => !(page.widgets || []).length) ? `<div class="notice draft-note">Pages without components remain drafts and cannot be published yet.</div>` : ""}
 
@@ -1593,6 +1731,25 @@ const sinceLabel = (iso) => {
   if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
   return `${Math.round(seconds / 86400)}d`;
 };
+
+/** What a page holds, in the rail's one line. */
+const describePage = (page) => {
+  const widgets = page.widgets || [];
+  if (!widgets.length) return "empty";
+  const kinds = [...new Set(widgets.map((widget) => widget.type.replace("entity_button", "control")))];
+  return widgets.length === 1 ? kinds[0] : `${widgets.length} components`;
+};
+
+/** The options a slot has switched on, for the board's last line. */
+const widgetFlags = (widget) => [
+  widget.show_timer && "timer",
+  widget.show_schedule && "schedule",
+  widget.card_tap && "whole tile",
+  widget.show_fan_speed && "fan speed",
+  widget.show_intercom && "intercom",
+  widget.gradual_open_script && "gradual open",
+  widget.gradual_close_script && "gradual close",
+].filter(Boolean).join(" · ");
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
 const formatDate = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
@@ -2100,6 +2257,52 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .workspace-panel dl > div + div { border-top:1px solid var(--line); }
 .workspace-panel dt { flex:1; color:var(--muted); }
 .workspace-panel dd { margin:0; text-align:right; }
+
+
+/* 13c ── INSPECTOR FORMS ─────────────────────────────────────
+   The widget forms keep their markup; in a 340 px column the label
+   goes above its control rather than beside it. */
+
+.inspector .widget-card, .inspector .widget-body { display:flex; flex-direction:column; gap:var(--s4); }
+.inspector label { display:flex; flex-direction:column; gap:6px; font:600 12px/1 var(--font); color:var(--muted); }
+.inspector label > :is(input,select,textarea) { font-weight:400; color:var(--ink); }
+.inspector label.check { flex-direction:row; align-items:center; gap:10px; font:400 14px/1 var(--font); color:var(--ink); }
+.inspector label.check > input { order:2; margin-left:auto; }
+.inspector small, .inspector .hint { font:400 12px/1.5 var(--font); color:var(--muted); }
+.inspector .inline-checks { display:flex; flex-direction:column; gap:12px; }
+.inspector .optional { font-weight:400; color:var(--disabled); }
+.inspector details summary { font:600 12px/1 var(--font); color:var(--muted); cursor:pointer; padding:6px 0; }
+
+
+/* 13d ── PICKERS AS THE MARKUP HAS THEM ─────────────────────
+   The icon and entity pickers keep their existing class names; these
+   put them into the design's picker idiom (§12) without rewriting
+   the markup that builds them. */
+
+.icon-picker { border:1px solid var(--line); }
+.icon-picker summary { padding:10px var(--s3); font:600 12px/1 var(--font); color:var(--muted); cursor:pointer; }
+.icon-picker summary b { float:right; color:var(--accent-ink); font-weight:600; }
+.icon-search { margin:0 var(--s3) 10px; width:calc(100% - var(--s4)); }
+.icon-categories { display:flex; flex-wrap:wrap; gap:6px; padding:0 var(--s3) 10px; }
+.icon-categories button { height:auto; padding:5px 9px; border-radius:999px; background:var(--surface-raised);
+  border-color:transparent; color:var(--muted); font:600 11px/1 var(--font); letter-spacing:.08em; text-transform:uppercase; }
+.icon-categories button.active { background:var(--accent); color:var(--on-accent); }
+.entity-search { margin:0; }
+.mode-choices { border:1px solid var(--line); }
+.mode-choices summary { padding:10px var(--s3); font:600 12px/1 var(--font); color:var(--muted); cursor:pointer; }
+.mode-choices summary b { float:right; color:var(--accent-ink); }
+.mode-choices .inline-checks, .mode-choices small { padding:0 var(--s3) 10px; }
+.sound-row { display:flex; gap:var(--s2); align-items:center; }
+.sound-row select { flex:1; }
+.sound-play { flex:0 0 auto; width:var(--control); padding:0; }
+.control-checks, .widget-fields { display:flex; flex-direction:column; gap:12px; }
+.dashboard-behavior, .system-ui { display:flex; flex-direction:column; }
+.draft-note, .unconfigured-notice { font:400 13px/1.5 var(--font); color:var(--muted); }
+.actions.left { justify-content:flex-start; }
+.adb-device { display:flex; align-items:center; gap:14px; padding:14px var(--pane-inset); }
+.adb-device + .adb-device { border-top:1px solid var(--line); }
+.adb-actions { display:flex; gap:var(--s2); margin-left:auto; }
+.workspace-layout-form { display:contents; }
 
 
 /* 14 ── UTILITIES AND RESPONSIVE ──────────────────────────── */

@@ -49,6 +49,11 @@ const RESPONSES = {
     ],
   },
   "nspanel_companion/updater/status": { paired: { base_url: "http://192.0.2.10:8098" } },
+  "nspanel_companion/panels/discovery/scan": { panels: [
+    { id: "31c7-08ae-4f52", name: "NSPanel Pro (hallway)", request_id: "req-1" },
+    { id: "a4d0-77b2-0e13", name: "NSPanel Pro (kitchen)", request_id: "req-2" },
+  ] },
+  "nspanel_companion/panels/discovery/settings": { passive: false },
   "nspanel_companion/scrypted/doorbells": [
     { id: "front-door-cam", name: "Front door", bridge_id: "front-door" },
   ],
