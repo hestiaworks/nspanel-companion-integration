@@ -56,7 +56,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("Publish default", source)
         self.assertNotIn("Rotate token", source)
         self.assertNotIn("<dt>Layout</dt>", source)
-        self.assertIn('["general","General"]', source)
+        self.assertRegex(source, r'\["general",\s*"General"\]')
         self.assertIn('data-workspace-panel="diagnostics"', source)
         self.assertIn("workspaceRoute", source)
         self.assertIn("No pages configured", source)

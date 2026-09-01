@@ -1495,6 +1495,33 @@ class NSPanelCompanionPanel extends HTMLElement {
   }
 
   /**
+   * The header every workspace screen wears.
+   *
+   * The page editor used to drop the tab bar and keep only breadcrumbs,
+   * which left no way to Doorbell or Diagnostics without climbing a crumb
+   * and made the editor look like a different application.
+   */
+  workspaceChrome(tab) {
+    const { panel } = this.editor;
+    const dirty = this.editor.dirty?.size || 0;
+    const online = !panel.revoked && panel.last_seen && Date.now() - new Date(panel.last_seen).getTime() < 45000;
+    return `<div class="app-bar">
+        <span class="mark"></span>
+        <div class="crumbs"><a href="#" data-close-editor>Panels</a><span class="sep">/</span>
+          <span class="here">${escapeHtml(panel.name)}</span></div>
+        <span class="status ${online ? "online" : "waiting"}">${panel.revoked ? "revoked" : online ? "online" : "offline"}</span>
+        <span class="spacer"></span>
+        <span class="save-state ${dirty ? "dirty" : ""}" id="save-state">${dirty ? `${dirty} unsaved change${dirty === 1 ? "" : "s"}` : "No unsaved changes"}</span>
+        <button type="button" id="revert-workspace" ${this.busy ? "disabled" : ""}>Revert</button>
+        <button type="button" id="save-workspace" class="primary" ${this.busy ? "disabled" : ""}>Save layout</button>
+      </div>
+      <nav class="tabs" aria-label="Panel configuration">
+        ${[["general", "General"], ["pages", "Pages"], ["doorbell", "Doorbell"], ["diagnostics", "Diagnostics"]]
+          .map(([id, label]) => `<button type="button" data-workspace-tab="${id}" class="${tab === id ? "active" : ""}">${label}</button>`).join("")}
+      </nav>`;
+  }
+
+  /**
    * The page editor: pages, board, inspector (§8).
    *
    * It replaced a dialog opened from inside another dialog, where every
@@ -1503,18 +1530,8 @@ class NSPanelCompanionPanel extends HTMLElement {
    * Here the board *is* the selector, and exactly one form is on screen.
    */
   pageEditorRoute(page) {
-    const { panel } = this.editor;
-    const dirty = this.editor.dirty?.size || 0;
     const index = this.editor.draftPages.indexOf(page);
-    return `<div class="app-bar">
-        <span class="mark"></span>
-        <div class="crumbs"><a href="#" data-close-editor>Panels</a><span class="sep">/</span>
-          <a href="#" data-close-page-components>${escapeHtml(panel.name)}</a><span class="sep">/</span><span class="here">Pages</span></div>
-        <span class="spacer"></span>
-        <span class="save-state ${dirty ? "dirty" : ""}" id="save-state">${dirty ? `${dirty} unsaved change${dirty === 1 ? "" : "s"}` : "No unsaved changes"}</span>
-        <button type="button" id="revert-workspace" ${this.busy ? "disabled" : ""}>Revert</button>
-        <button type="button" id="save-workspace" class="primary" ${this.busy ? "disabled" : ""}>Save layout</button>
-      </div>
+    return `${this.workspaceChrome("pages")}
       <div class="editor">
         ${this.pageRail(page)}
         ${this.pageBoard(page, index)}
@@ -1659,21 +1676,8 @@ class NSPanelCompanionPanel extends HTMLElement {
     const doorbell = layout.doorbell || {};
     const selectedScrypted = doorbell.scrypted_bridge_id && doorbell.scrypted_doorbell_id
       ? `${doorbell.scrypted_bridge_id}|${doorbell.scrypted_doorbell_id}` : "";
-    const online = !panel.revoked && panel.last_seen && Date.now() - new Date(panel.last_seen).getTime() < 45000;
     const tab = this.workspaceTab;
-    const dirty = this.editor.dirty?.size || 0;
-    return `<div class="app-bar">
-        <span class="mark"></span>
-        <div class="crumbs"><a href="#" data-close-editor>Panels</a><span class="sep">/</span><span class="here">${escapeHtml(panel.name)}</span></div>
-        <span class="status ${online ? "online" : "waiting"}">${panel.revoked ? "revoked" : online ? "online" : "offline"}</span>
-        <span class="spacer"></span>
-        <span class="save-state ${dirty ? "dirty" : ""}" id="save-state">${dirty ? `${dirty} unsaved change${dirty === 1 ? "" : "s"}` : "No unsaved changes"}</span>
-        <button type="button" id="revert-workspace" ${this.busy ? "disabled" : ""}>Revert</button>
-        <button type="button" id="save-workspace" class="primary" ${this.busy ? "disabled" : ""}>Save layout</button>
-      </div>
-      <nav class="tabs" aria-label="Panel configuration">
-        ${[["general","General"],["pages","Pages"],["doorbell","Doorbell"],["diagnostics","Diagnostics"]].map(([id,label]) => `<button type="button" data-workspace-tab="${id}" class="${tab === id ? "active" : ""}">${label}</button>`).join("")}
-      </nav>
+    return `${this.workspaceChrome(tab)}
       <main class="wide">${this.error ? `<div class="notice error">${escapeHtml(this.error)}</div>` : ""}
       <section class="workspace-panel" data-workspace-panel="general" ${tab === "general" ? "" : "hidden"}>
         <div class="workspace-grid"><div class="stack">
@@ -2198,7 +2202,7 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 
 /* 11 ── PAGE EDITOR ───────────────────────────────────────── */
 
-.editor { display:grid; grid-template-columns:var(--rail) minmax(0,1fr) var(--inspector); min-height:calc(100vh - var(--app-bar)); }
+.editor { display:grid; grid-template-columns:var(--rail) minmax(0,1fr) var(--inspector); min-height:calc(100vh - var(--app-bar) - var(--tab-bar)); }
 
 .editor > .rail { border-right:1px solid var(--line); display:flex; flex-direction:column; }
 .rail .rail-head { height:var(--tab-bar); display:flex; align-items:center; padding:0 var(--s4); border-bottom:1px solid var(--line); }
