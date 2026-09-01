@@ -1320,18 +1320,20 @@ class NSPanelCompanionPanel extends HTMLElement {
         this.draggedPageIndex = Number(handle.dataset.pageDrag);
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", String(this.draggedPageIndex));
-        handle.closest(".page-card")?.classList.add("dragging");
+        (handle.closest(".page-item") || handle.closest(".page-card"))?.classList.add("dragging");
       });
       handle.addEventListener("dragend", () => {
         this.draggedPageIndex = null;
-        this.shadowRoot.querySelectorAll(".page-card").forEach((card) => card.classList.remove("dragging", "drag-over"));
+        this.shadowRoot.querySelectorAll(".page-card, .page-item").forEach((card) =>
+          card.classList.remove("dragging", "drop-target"));
       });
     });
     this.shadowRoot.querySelectorAll("[data-page-drop]").forEach((card) => {
-      card.addEventListener("dragover", (event) => { event.preventDefault(); card.classList.add("drag-over"); });
-      card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
+      card.addEventListener("dragover", (event) => { event.preventDefault(); card.classList.add("drop-target"); });
+      card.addEventListener("dragleave", () => card.classList.remove("drop-target"));
       card.addEventListener("drop", (event) => {
         event.preventDefault();
+        card.classList.remove("drop-target");
         const from = Number(event.dataTransfer.getData("text/plain"));
         const to = Number(card.dataset.pageDrop);
         this.moveDraftPage(from, to);
@@ -1689,11 +1691,12 @@ class NSPanelCompanionPanel extends HTMLElement {
     return `<div class="rail">
       <div class="rail-head"><span class="t-label">Pages · swipe order</span></div>
       ${pages.map((page, index) => `<div class="page-item ${page.id === active.id ? "selected" : ""}"
+          draggable="true" data-page-drag="${index}"
           data-select-page="${escapeHtml(page.id)}" data-page-drop="${index}">
           <span class="index">${String(index + 1).padStart(2, "0")}</span>
           <div class="grow"><div class="name truncate">${escapeHtml(page.title || "Untitled")}</div>
             ${describePage(page, page.title) ? `<div class="meta">${describePage(page, page.title)}</div>` : ""}</div>
-          <span class="drag" data-page-drag="${index}" draggable="true" title="Drag to reorder">⠿</span>
+          <span class="drag" title="Drag to reorder" aria-hidden="true">⠿</span>
         </div>`).join("")}
       <div class="add-page" id="add-page-rail" role="button" tabindex="0">＋ Add page</div>
       <div class="rail-foot">Panels swipe left to right in this order. The default page is set under General.</div>
@@ -2659,6 +2662,32 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .inspector .icon-grid label:nth-child(4n) { border-right:0; }
 .inspector .icon-grid label small { overflow-wrap:anywhere; text-align:center; line-height:1.25; }
 .inspector .icon-search { width:calc(100% - var(--s4)); }
+
+/* The hidden radios were the whole problem. The sheet hides them with
+   position:absolute, but the base input rule gives every input
+   width:100% — and with no positioned ancestor that is 100% of the
+   page, so each one measured 1440 px and they stacked off to the
+   right until the document was 2098 px wide. The page then scrolled
+   sideways, which is what took the rail off screen. */
+/* Every input carries the field padding, and with border-box a 16 px
+   box whose padding is already 24 px cannot be 16 px — the used width
+   becomes padding plus border, which is why a tick box measured 26. */
+.check input[type=checkbox], .check input[type=radio],
+.icon-grid input, .select-native { padding:0; }
+
+/* Reordering had no visual answer at all: the drag added classes the rail
+   does not define, so nothing moved, nothing lifted, and nothing showed
+   where the page would land. */
+.rail .page-item { cursor:grab; }
+.rail .page-item:active { cursor:grabbing; }
+.rail .page-item .drag { color:var(--disabled); }
+.rail .page-item:hover .drag { color:var(--muted); }
+.rail .page-item.dragging { opacity:.45; }
+.rail .page-item.drop-target { box-shadow:inset 0 -3px 0 var(--accent); }
+.rail .page-item.selected.drop-target { box-shadow:inset 3px 0 0 var(--accent), inset 0 -3px 0 var(--accent); }
+
+.icon-grid label { position:relative; }
+.icon-grid input { width:1px; height:1px; }
 
 /* 4. A select keeps its own chevron, so it reads as a list to open
    rather than a text field that will not accept typing. */
