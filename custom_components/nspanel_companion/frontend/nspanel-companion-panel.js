@@ -192,6 +192,17 @@ class NSPanelCompanionPanel extends HTMLElement {
 
   selectWorkspaceTab(tab, updateRoute = true) {
     this.workspaceTab = tab;
+    if (tab === "pages" && this.editor && !this.editor.activePageId && this.editor.draftPages.length) {
+      this.editor.activePageId = this.editor.draftPages[0].id;
+      this.editor.selectedWidgetIndex = null;
+      if (updateRoute) history.pushState(null, "", this.workspaceRoute(this.editor.panel.panel_id, tab));
+      this.render();
+      return;
+    }
+    if (tab !== "pages" && this.editor?.activePageId) {
+      this.editor.activePageId = null;
+      this.render();
+    }
     this.shadowRoot.querySelectorAll("[data-workspace-tab]").forEach((button) =>
       button.classList.toggle("active", button.dataset.workspaceTab === tab));
     this.shadowRoot.querySelectorAll("[data-workspace-panel]").forEach((panel) =>
@@ -1651,13 +1662,12 @@ class NSPanelCompanionPanel extends HTMLElement {
     const online = !panel.revoked && panel.last_seen && Date.now() - new Date(panel.last_seen).getTime() < 45000;
     const tab = this.workspaceTab;
     const dirty = this.editor.dirty?.size || 0;
-    const nextRevision = Number(layout.revision ?? 0) + 1;
     return `<div class="app-bar">
         <span class="mark"></span>
         <div class="crumbs"><a href="#" data-close-editor>Panels</a><span class="sep">/</span><span class="here">${escapeHtml(panel.name)}</span></div>
         <span class="status ${online ? "online" : "waiting"}">${panel.revoked ? "revoked" : online ? "online" : "offline"}</span>
         <span class="spacer"></span>
-        <span class="save-state ${dirty ? "dirty" : ""}" id="save-state">${dirty ? `${dirty} unsaved change${dirty === 1 ? "" : "s"}` : `Draft · publishes revision ${nextRevision}`}</span>
+        <span class="save-state ${dirty ? "dirty" : ""}" id="save-state">${dirty ? `${dirty} unsaved change${dirty === 1 ? "" : "s"}` : "No unsaved changes"}</span>
         <button type="button" id="revert-workspace" ${this.busy ? "disabled" : ""}>Revert</button>
         <button type="button" id="save-workspace" class="primary" ${this.busy ? "disabled" : ""}>Save layout</button>
       </div>
@@ -1704,8 +1714,15 @@ class NSPanelCompanionPanel extends HTMLElement {
       <form id="layout-editor" class="workspace-layout-form">
         <section class="workspace-panel" data-workspace-panel="pages" ${tab === "pages" ? "" : "hidden"}>
           <div class="workspace-intro"><h3>Pages</h3><p>Create and arrange the screens people reach by swiping on this panel. Changes stay in this workspace until you publish.</p></div>
-          ${this.editor.draftPages.length ? "" : `<div class="unconfigured-notice"><span class="device-icon">＋</span><div><h3>No pages configured</h3><p>This panel is showing its native setup screen. Create its first page below.</p></div></div>`}
-          <div class="add-page"><label>New page name<input id="new-page-title" maxlength="48" placeholder="For example: Climate or Lights" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}></label><button id="add-page" type="button" class="primary" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Add page</button></div>
+          <div class="new-page">
+            <div class="row tall"><span class="device-icon small">＋</span>
+              <div class="grow"><div class="t-control">No pages configured</div>
+                <div class="sub">This panel shows its native setup screen until it has one.</div></div></div>
+            <label class="field"><span class="label">New page name</span>
+              <input id="new-page-title" maxlength="48" placeholder="For example: Climate or Lights" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>
+              <span class="hint">The panel swipes between pages in the order they are listed.</span></label>
+            <div class="actions"><button id="add-page" type="button" class="primary" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Add page</button></div>
+          </div>
           ${this.editor.draftPages.some((page) => !(page.widgets || []).length) ? `<div class="notice draft-note">Pages without components remain drafts and cannot be published yet.</div>` : ""}
 
         </section>
@@ -2100,6 +2117,7 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .tabs button { height:100%; border:0; border-radius:0; background:transparent; color:var(--muted); padding:0 var(--s4); }
 .tabs button:hover { background:transparent; color:var(--ink); }
 .tabs button.active { color:var(--ink); box-shadow:inset 0 -2px 0 var(--accent); }
+.tabs button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 
 /* the only thing that writes */
 .save-state { font:400 13px/1 var(--font); color:var(--muted); }
@@ -2421,6 +2439,17 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .mode-choices .inline-checks { padding:10px var(--s3); gap:0; }
 .mode-choices .inline-checks > label.check { min-height:var(--row); }
 .mode-choices .inline-checks > label.check + label.check { border-top:1px solid var(--line); }
+
+
+/* 13f ── THE FIRST PAGE ──────────────────────────────────────
+   A panel with no pages has one thing to do, so it is a band with a
+   field and its button rather than a loose label and input. */
+
+.new-page { border:1px solid var(--line); max-width:520px; }
+.new-page > * { padding:14px var(--s4); }
+.new-page > * + * { border-top:1px solid var(--line); }
+.new-page .field { gap:8px; }
+.new-page .actions { display:flex; justify-content:flex-end; }
 
 
 /* 14 ── UTILITIES AND RESPONSIVE ──────────────────────────── */
