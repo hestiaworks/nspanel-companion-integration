@@ -207,7 +207,12 @@ class PanelWebSocketView(HomeAssistantView):
                 samples = await history_samples(entity_id, span)
             except Exception:  # a recorder that is absent, purged or busy
                 return
-            buckets = bucket(samples, span, time.time())
+            # One "now" for both the bucketing and the bounds sent with it,
+            # so the panel labels the bars the server actually drew rather
+            # than the window it would have drawn a moment later.
+            now = time.time()
+            buckets = bucket(samples, span, now)
+            start, _end, width = bucket_bounds(span, now)
             state = self._hass.states.get(entity_id)
             if socket.closed:
                 return
@@ -216,6 +221,11 @@ class PanelWebSocketView(HomeAssistantView):
                 "entity_id": entity_id,
                 "range": span,
                 "buckets": buckets,
+                # When the row begins and how wide one bar is. Without these
+                # the panel can only count backwards from its own clock, and
+                # its axis said "-6h, -4h, -2h" because that is all it knew.
+                "start_ms": int(start * 1000),
+                "bucket_ms": int(width * 1000),
                 "summary": summarise(buckets),
                 "unit": (state.attributes.get("unit_of_measurement") if state else None) or "",
             })
@@ -255,6 +265,9 @@ class PanelWebSocketView(HomeAssistantView):
                         "talkback_url": doorbell_config.get("talkback_url", ""),
                         "talkback_key": doorbell_config.get("talkback_key", ""),
                         "quiet_mode": doorbell_config.get("quiet_mode", False),
+                        "chime": doorbell_config.get("chime", "off"),
+                        "chime_volume": doorbell_config.get("chime_volume", 70),
+                        "talkback_gain": doorbell_config.get("talkback_gain", 100),
                         "auto_close_ms": doorbell_config.get("auto_close_ms", 60000),
                         "talk_extend_ms": doorbell_config.get("talk_extend_ms", 15000) if doorbell_config.get("talk_extend_enabled", True) else 0,
                     },
@@ -334,11 +347,14 @@ class PanelWebSocketView(HomeAssistantView):
                              if r["panel_id"] == panel_id),
                             panel_id,
                         )
+                        callee_intercom = (registry.layout(callee) or {}).get("intercom") or {}
                         await tell(callee, {
                             "type": "intercom_ring",
                             "call_id": call_id,
                             "panel_id": panel_id,
                             "name": caller_name or panel_id,
+                            "ring": callee_intercom.get("ring", "off"),
+                            "ring_volume": callee_intercom.get("ring_volume", 70),
                         })
                         await socket.send_json({"type": "intercom_calling", "call_id": call_id})
                         continue

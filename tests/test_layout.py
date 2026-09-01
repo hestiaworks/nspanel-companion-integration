@@ -332,7 +332,7 @@ class LayoutValidationTest(unittest.TestCase):
                 **extra,
             })
 
-        self.assertEqual({"enabled": False}, panel()["intercom"])
+        self.assertIs(False, panel()["intercom"]["enabled"])
         self.assertTrue(panel(intercom={"enabled": True})["intercom"]["enabled"])
         with self.assertRaisesRegex(ValueError, "Intercom"):
             panel(intercom="yes")
@@ -347,5 +347,112 @@ class LayoutValidationTest(unittest.TestCase):
         self.assertEqual("intercom", value["pages"][0]["widgets"][0]["type"])
 
 
+
+class ThermostatModeChoiceTest(unittest.TestCase):
+    """Which fan and swing modes a panel offers.
+
+    Some units report a dozen swing positions. All of them belong to the
+    entity, but a wall panel is not the place to choose between "Fixed
+    upper-middle" and "Fixed middle" — and the sheet that lists them is 480
+    pixels tall.
+    """
+
+    def panel(self, **widget):
+        return layout_module.validate_layout({
+            "schema_version": 1, "revision": "modes",
+            "pages": [{"id": "p", "widgets": [
+                {"type": "thermostat", "entity_id": "climate.x", **widget},
+            ]}],
+        })["pages"][0]["widgets"][0]
+
+    def test_listing_nothing_offers_everything_the_entity_has(self):
+        # The panel reads the entity's own modes, so an empty list is the
+        # absence of an opinion rather than an instruction to show none.
+        widget = self.panel()
+        self.assertEqual([], widget["fan_modes"])
+        self.assertEqual([], widget["swing_modes"])
+
+    def test_it_keeps_the_chosen_modes_in_order(self):
+        widget = self.panel(swing_modes=["off", "vertical"], fan_modes=["low", "high"])
+        self.assertEqual(["off", "vertical"], widget["swing_modes"])
+        self.assertEqual(["low", "high"], widget["fan_modes"])
+
+    def test_it_refuses_something_that_is_not_a_list_of_names(self):
+        with self.assertRaises(ValueError):
+            self.panel(swing_modes="vertical")
+        with self.assertRaises(ValueError):
+            self.panel(fan_modes=[1, 2])
+
+    def test_it_refuses_more_than_the_sheet_can_show(self):
+        # Eight is four rows of two, which is what fits above the fold.
+        with self.assertRaises(ValueError):
+            self.panel(fan_modes=[f"mode_{n}" for n in range(9)])
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class AudioSettingsTest(unittest.TestCase):
+    """Ring sounds, and the two microphone settings that are real.
+
+    Sound is off by default on both. A panel that has been quietly on a wall
+    for weeks must not start making noise because it was updated.
+    """
+
+    def base(self, **extra):
+        return {"schema_version": 1, "revision": "audio-1",
+                "pages": [{"id": "m", "widgets": [{"type": "weather"}]}], **extra}
+
+    def test_a_panel_that_was_never_configured_stays_silent(self):
+        value = layout_module.validate_layout(self.base(
+            doorbell={"trigger_entity_id": "binary_sensor.bell"},
+            intercom={"enabled": True},
+        ))
+        self.assertEqual("off", value["doorbell"]["chime"])
+        self.assertEqual("off", value["intercom"]["ring"])
+
+    def test_it_keeps_the_chosen_sound_and_volume(self):
+        value = layout_module.validate_layout(self.base(
+            doorbell={"trigger_entity_id": "binary_sensor.bell",
+                      "chime": "chime_2", "chime_volume": 40},
+            intercom={"enabled": True, "ring": "chime_3", "ring_volume": 90},
+        ))
+        self.assertEqual(("chime_2", 40), (value["doorbell"]["chime"], value["doorbell"]["chime_volume"]))
+        self.assertEqual(("chime_3", 90), (value["intercom"]["ring"], value["intercom"]["ring_volume"]))
+
+    def test_a_sound_that_was_removed_becomes_silence_rather_than_an_error(self):
+        # The first three sounds shipped were replaced. A panel still holding
+        # one of those names must keep publishing: the sound is gone, so the
+        # honest record is that it makes none — not a layout that cannot be
+        # saved until someone finds the field.
+        value = layout_module.validate_layout(self.base(
+            doorbell={"trigger_entity_id": "binary_sensor.bell", "chime": "bell"},
+            intercom={"enabled": True, "ring": "ping"},
+        ))
+        self.assertEqual("off", value["doorbell"]["chime"])
+        self.assertEqual("off", value["intercom"]["ring"])
+
+    def test_it_refuses_a_sound_the_panel_does_not_carry(self):
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(self.base(
+                intercom={"enabled": True, "ring": "foghorn"}))
+
+    def test_it_refuses_a_volume_off_the_scale(self):
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(self.base(
+                intercom={"enabled": True, "ring_volume": 140}))
+
+    def test_processing_defaults_match_what_webrtc_already_does(self):
+        # Both on: these mirror libwebrtc's own defaults, so a layout written
+        # before these settings existed behaves exactly as it did.
+        value = layout_module.validate_layout(self.base(intercom={"enabled": True}))
+        self.assertIs(True, value["intercom"]["noise_suppression"])
+        self.assertIs(True, value["intercom"]["auto_gain"])
+
+    def test_talkback_gain_is_a_percentage_within_reason(self):
+        value = layout_module.validate_layout(self.base(
+            doorbell={"trigger_entity_id": "binary_sensor.bell", "talkback_gain": 180}))
+        self.assertEqual(180, value["doorbell"]["talkback_gain"])
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(self.base(
+                doorbell={"trigger_entity_id": "binary_sensor.bell", "talkback_gain": 900}))

@@ -10,6 +10,18 @@ SCRIPT = ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-
 
 
 class FrontendContractTest(unittest.TestCase):
+    def test_home_assistant_state_is_read_through_the_property_that_exists(self):
+        """`this.hass` is undefined here; the panel stores it as `_hass`.
+
+        Optional chaining makes the mistake silent: `this.hass?.states` is
+        simply undefined, so a control that depends on it renders as an empty
+        string and the setting appears not to exist. That is exactly how the
+        climate mode picker shipped in v0.44.0 doing nothing at all.
+        """
+        source = SCRIPT.read_text()
+        wrong = re.findall(r"this\.hass\b", source)
+        self.assertEqual([], wrong, "read Home Assistant state through this._hass")
+
     def test_frontend_uses_registered_websocket_commands(self):
         source = SCRIPT.read_text()
         for command in (
