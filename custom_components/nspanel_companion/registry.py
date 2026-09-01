@@ -29,6 +29,11 @@ SENSITIVE_DIAGNOSTIC = re.compile(
 class PanelRegistry:
     """Own panel records for one Home Assistant instance."""
 
+    #: How much of a panel's recent history is kept. It rides along with
+    #: every panel list, and a panel that flaps would otherwise grow a log
+    #: without limit that nobody reads past the first few lines.
+    MAX_EVENTS = 8
+
     def __init__(self, hass: HomeAssistant, config_entry_id: str) -> None:
         self._hass = hass
         self._config_entry_id = config_entry_id
@@ -355,7 +360,10 @@ class PanelRegistry:
         record = self._require(panel_id)
         record["last_seen"] = datetime.now(UTC).isoformat()
         record["app_version"] = str(metadata.get("app_version", ""))[:64] or None
-        record["reported_layout_revision"] = str(metadata.get("layout_revision", ""))[:64] or None
+        reported = str(metadata.get("layout_revision", ""))[:64] or None
+        if reported and reported != record.get("reported_layout_revision"):
+            self.record_event(panel_id, f"Layout revision {reported} acknowledged")
+        record["reported_layout_revision"] = reported
         report = str(metadata.get("diagnostics", ""))[:16_384]
         record["diagnostics"] = SENSITIVE_DIAGNOSTIC.sub("<redacted>", report) or None
         self._store.async_delay_save(self._storage_data, 60)
@@ -366,6 +374,7 @@ class PanelRegistry:
         token = secrets.token_urlsafe(32)
         record["token_hash"] = hashlib.sha256(token.encode()).hexdigest()
         record["revoked"] = False
+        self.record_event(panel_id, "Panel token rotated", "warn")
         await self._save()
         return self._public(record), token
 
@@ -423,6 +432,7 @@ class PanelRegistry:
         layout = await self._hydrate_camera_widgets(layout, existing_doorbell)
         normalized = validate_layout(layout)
         record["layout"] = normalized
+        self.record_event(panel_id, f"Layout revision {normalized.get('revision', '?')} published")
         record["layout_revision"] = normalized["revision"]
         await self._save()
         return self._public(record)
@@ -500,7 +510,35 @@ class PanelRegistry:
 
     @staticmethod
     def _public(record: dict[str, Any]) -> dict[str, Any]:
-        return {key: value for key, value in record.items() if key not in {"token_hash", "layout", "diagnostics"}}
+        """A panel record as the admin UI may see it.
+
+        The layout is withheld — it is large, and the list carries every
+        panel — but two facts about it are summarised, because withholding it
+        entirely left the UI unable to say whether a panel was configured and
+        every panel read as unconfigured however many pages it had.
+        """
+        public = {key: value for key, value in record.items() if key not in {"token_hash", "layout", "diagnostics"}}
+        layout = record.get("layout") or {}
+        public["layout_revision"] = layout.get("revision")
+        public["page_count"] = len(layout.get("pages") or [])
+        public["events"] = record.get("events") or []
+        return public
+
+    def record_event(self, panel_id: str, message: str, level: str = "info") -> None:
+        """Note something that happened to a panel, newest first.
+
+        A panel that is gone is not an error: sockets close after a panel is
+        removed, and that is not worth raising into a request that is already
+        finishing.
+        """
+        record = self._panels.get(panel_id)
+        if not record:
+            return
+        events = [
+            {"at": datetime.now(UTC).isoformat(), "message": str(message)[:160], "level": level},
+            *record.get("events", []),
+        ]
+        record["events"] = events[: self.MAX_EVENTS]
 
     def diagnostics(self, panel_id: str) -> str:
         """Return the latest bounded, panel-supplied sanitized diagnostic report."""

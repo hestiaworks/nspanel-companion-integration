@@ -88,6 +88,76 @@ class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("abc123", report)
         self.assertNotIn("diagnostics", registry.list_public()[0])
 
+    def test_panel_list_summarises_the_layout_without_shipping_it(self):
+        """The panel list drives the home screen's tiles.
+
+        The layout itself is withheld — it is large and the list shows many
+        panels — but withholding it entirely left the admin UI unable to say
+        whether a panel was configured at all, so every panel read as
+        unconfigured however many pages it had.
+        """
+        registry = PanelRegistry.__new__(PanelRegistry)
+        registry._panels = {"panel-abcd": {
+            "panel_id": "panel-abcd", "device_id": "panel-abcd", "name": "Panel",
+            "token_hash": "x", "revoked": False,
+            "layout": {"revision": 42, "pages": [{"id": "a"}, {"id": "b"}]},
+        }}
+        registry._store = Mock()
+        registry._storage_data = {}
+
+        record = registry.list_public()[0]
+
+        self.assertNotIn("layout", record)
+        self.assertEqual(42, record["layout_revision"])
+        self.assertEqual(2, record["page_count"])
+
+    def test_a_panel_with_no_layout_says_so_rather_than_guessing(self):
+        registry = PanelRegistry.__new__(PanelRegistry)
+        registry._panels = {"panel-abcd": {
+            "panel_id": "panel-abcd", "device_id": "panel-abcd", "name": "Panel",
+            "token_hash": "x", "revoked": False, "layout": None,
+        }}
+        registry._store = Mock()
+        registry._storage_data = {}
+
+        record = registry.list_public()[0]
+
+        self.assertIsNone(record["layout_revision"])
+        self.assertEqual(0, record["page_count"])
+
+    def test_panel_events_are_kept_newest_first_and_bounded(self):
+        """The diagnostics tab answers "what happened to this panel lately".
+
+        Bounded on purpose: this rides along with every panel list, and an
+        unbounded log on a panel that flaps would grow without limit and be
+        read by nobody past the first few lines.
+        """
+        registry = PanelRegistry.__new__(PanelRegistry)
+        registry._panels = {"panel-abcd": {
+            "panel_id": "panel-abcd", "device_id": "panel-abcd", "name": "Panel",
+            "token_hash": "x", "revoked": False,
+        }}
+        registry._store = Mock()
+        registry._storage_data = {}
+
+        for index in range(PanelRegistry.MAX_EVENTS + 5):
+            registry.record_event("panel-abcd", f"event {index}")
+
+        events = registry.list_public()[0]["events"]
+        self.assertEqual(PanelRegistry.MAX_EVENTS, len(events))
+        self.assertEqual(f"event {PanelRegistry.MAX_EVENTS + 4}", events[0]["message"])
+        self.assertIn("at", events[0])
+
+    def test_an_event_for_a_panel_that_is_gone_is_dropped_quietly(self):
+        # Sockets close after a panel is removed; that is not an error worth
+        # raising into a request that is already finishing.
+        registry = PanelRegistry.__new__(PanelRegistry)
+        registry._panels = {}
+        registry._store = Mock()
+        registry._storage_data = {}
+
+        registry.record_event("panel-gone", "anything")
+
     async def test_pairing_existing_identity_preserves_layout_and_reauthorizes(self):
         registry = PanelRegistry.__new__(PanelRegistry)
         old_token = "old-token"

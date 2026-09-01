@@ -288,6 +288,7 @@ class PanelWebSocketView(HomeAssistantView):
         unsub_doorbell = self._hass.bus.async_listen("nspanel_doorbell", doorbell)
         sockets = self._hass.data.setdefault(DOMAIN, {}).setdefault(DATA_PANEL_SOCKETS, {})
         sockets[panel_id] = socket
+        registry.record_event(panel_id, "Websocket connected")
         book: CallBook = self._hass.data.setdefault(DOMAIN, {}).setdefault(
             DATA_CALL_BOOK, CallBook(),
         )
@@ -422,6 +423,7 @@ class PanelWebSocketView(HomeAssistantView):
             # it, and dropping that would lose the live socket.
             if sockets.get(panel_id) is socket:
                 sockets.pop(panel_id, None)
+                registry.record_event(panel_id, "Websocket dropped", "warn")
             # A panel whose socket went away leaves whatever call it was in,
             # and the other end is told rather than left listening to a link
             # that will never carry anything again.

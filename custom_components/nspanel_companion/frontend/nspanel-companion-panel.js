@@ -1032,6 +1032,13 @@ class NSPanelCompanionPanel extends HTMLElement {
       this.editor.selectedWidgetIndex = null;
       this.render();
     });
+    this.shadowRoot.querySelectorAll("[data-workspace-tab-link]").forEach((row) => {
+      const go = () => this.selectWorkspaceTab(row.dataset.workspaceTabLink);
+      row.addEventListener("click", go);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); go(); }
+      });
+    });
     this.shadowRoot.querySelector("#save-workspace")?.addEventListener("click", () => this.saveWorkspace());
     this.shadowRoot.querySelector("#revert-workspace")?.addEventListener("click", () => {
       // Every field is redrawn from what the server last gave us, so throwing
@@ -1216,15 +1223,15 @@ class NSPanelCompanionPanel extends HTMLElement {
 
   panelCard(panel) {
     const online = !panel.revoked && panel.last_seen && Date.now() - new Date(panel.last_seen).getTime() < 45000;
-    const layout = panel.layout;
-    const configured = Boolean(layout?.pages?.length);
+    const pageCount = Number(panel.page_count ?? 0);
+    const configured = pageCount > 0;
     const state = panel.revoked ? "revoked" : !configured ? "unconfigured" : online ? "online" : "offline";
     const tone = panel.revoked ? "error" : online && configured ? "online" : configured ? "offline" : "waiting";
     // The metrics row is what makes a wall of tiles readable at a glance:
     // the same three facts, in the same place, at the same height.
     const metrics = `<div class="metrics">
-      <div><span class="t-label">Pages</span><b>${layout?.pages?.length ?? "—"}</b></div>
-      <div><span class="t-label">Revision</span><b>${layout?.revision ?? "—"}</b></div>
+      <div><span class="t-label">Pages</span><b>${pageCount}</b></div>
+      <div><span class="t-label">Revision</span><b>${panel.layout_revision ?? "—"}</b></div>
       <div><span class="t-label">Last seen</span><b>${panel.last_seen ? escapeHtml(sinceLabel(panel.last_seen)) : "—"}</b></div>
     </div>`;
     return `<article class="panel-card">
@@ -1659,6 +1666,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       </nav>
       <main class="wide">${this.error ? `<div class="notice error">${escapeHtml(this.error)}</div>` : ""}
       <section class="workspace-panel" data-workspace-panel="general" ${tab === "general" ? "" : "hidden"}>
+        <div class="workspace-grid"><div class="stack">
         <div class="workspace-intro"><h3>Panel identity</h3><p>Give this panel a name that describes its room or purpose. Its stable device ID never changes.</p></div>
         <form id="panel-general" class="settings-card">
           <label>Panel name<input name="panel_name" maxlength="64" required value="${escapeHtml(panel.name)}" placeholder="Living room"></label>
@@ -1674,6 +1682,24 @@ class NSPanelCompanionPanel extends HTMLElement {
           <dl><div><dt>Connection</dt><dd>${panel.revoked ? "Revoked" : online ? "Online" : "Offline"}</dd></div><div><dt>Registered</dt><dd>${formatDate(panel.created_at)}</dd></div><div><dt>App version</dt><dd>${escapeHtml(panel.app_version || "—")}</dd></div></dl>
           <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save general settings</button><button type="button" data-restart-panel ${this.busy ? "disabled" : ""}>Restart app</button><button type="button" data-reboot-panel ${this.busy ? "disabled" : ""}>Reboot panel</button></div>
         </form>
+        </div>
+        <aside class="stack">
+          <div><span class="section-label">Pages on this panel</span>
+            <div class="band">
+              ${this.editor.draftPages.length
+                ? this.editor.draftPages.map((page, index) => `<div class="row">
+                    <span class="index">${String(index + 1).padStart(2, "0")}</span>
+                    <span class="grow truncate">${escapeHtml(page.title || "Untitled")}</span>
+                    <span class="muted">${(page.widgets || []).length}</span>
+                  </div>`).join("")
+                : `<div class="row"><span class="muted">No pages yet</span></div>`}
+              <div class="row interactive" data-workspace-tab-link="pages" role="button" tabindex="0">
+                <span class="grow accent">Edit pages →</span></div>
+            </div>
+            <p class="t-small" style="margin-top:10px">Order here is swipe order on the panel. Rearranging is done in the page editor.</p>
+          </div>
+        </aside>
+        </div>
       </section>
       <form id="layout-editor" class="workspace-layout-form">
         <section class="workspace-panel" data-workspace-panel="pages" ${tab === "pages" ? "" : "hidden"}>
@@ -1708,8 +1734,39 @@ class NSPanelCompanionPanel extends HTMLElement {
         </section>
       </form>
       <section class="workspace-panel" data-workspace-panel="diagnostics" ${tab === "diagnostics" ? "" : "hidden"}>
-        <div class="workspace-intro"><h3>Diagnostics</h3><p>Download the latest bounded, sanitized health report uploaded by this panel.</p></div>
-        <div class="settings-card"><dl><div><dt>Last seen</dt><dd>${formatDate(panel.last_seen)}</dd></div><div><dt>Reported layout</dt><dd>${escapeHtml(panel.reported_layout_revision || "—")}</dd></div></dl><div class="actions left"><button data-diagnostics="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Download diagnostics</button></div></div>
+        <div class="workspace-grid"><div class="stack">
+          <div><span class="section-label">Health</span>
+            <div class="kv">
+              <div><span class="k">Last seen</span><span class="v">${panel.last_seen ? `${escapeHtml(sinceLabel(panel.last_seen))} ago · ${formatDate(panel.last_seen)}` : "never"}</span></div>
+              <div><span class="k">Websocket</span><span class="v ${panel.connected ? "ok-text" : "muted"}">${panel.connected ? "connected" : "not connected"}</span></div>
+              <div><span class="k">App version</span><span class="v mono">${escapeHtml(panel.app_version || "—")}</span></div>
+              <div><span class="k">Published revision</span><span class="v mono">${escapeHtml(String(panel.layout_revision ?? "—"))}</span></div>
+              <div><span class="k">Revision the panel reports</span><span class="v"><span class="mono">${escapeHtml(panel.reported_layout_revision || "—")}</span>${
+                panel.reported_layout_revision && String(panel.reported_layout_revision) === String(panel.layout_revision)
+                  ? ` <span class="ok-text">in sync</span>` : panel.reported_layout_revision ? ` <span class="accent">behind</span>` : ""}</span></div>
+              <div><span class="k">Panel ID</span><span class="v mono">${escapeHtml(panel.panel_id)}</span></div>
+            </div>
+          </div>
+          <div><span class="section-label">Report</span>
+            <div class="band"><div class="row tall">
+              <div class="grow"><div class="t-control">Download diagnostics</div>
+                <div class="sub">Bounded, sanitised health report uploaded by the panel</div></div>
+              <button data-diagnostics="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Download</button>
+            </div></div>
+          </div>
+        </div>
+        <aside class="stack">
+          <div><span class="section-label">Recent events</span>
+            ${(panel.events || []).length
+              ? `<div class="band event-log">${panel.events.map((event) => `<div>
+                    <time>${escapeHtml(clockLabel(event.at))}</time>
+                    <span class="grow ${event.level === "warn" ? "warn" : ""}">${escapeHtml(event.message)}</span>
+                  </div>`).join("")}</div>`
+              : `<div class="band"><div class="row"><span class="muted">Nothing recorded yet</span></div></div>`}
+            <p class="t-small" style="margin-top:10px">The last ${8} things Home Assistant noticed about this panel.</p>
+          </div>
+        </aside>
+        </div>
         <div class="danger-zone">
           <span class="section-label">Danger zone</span>
         <div class="band"><div class="row tall">
@@ -1750,6 +1807,13 @@ const widgetFlags = (widget) => [
   widget.gradual_open_script && "gradual open",
   widget.gradual_close_script && "gradual close",
 ].filter(Boolean).join(" · ");
+
+/** "15:38" — an event log is read down the times, not the dates. */
+const clockLabel = (iso) => {
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? "--:--"
+    : `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+};
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
 const formatDate = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
@@ -2303,6 +2367,60 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .adb-device + .adb-device { border-top:1px solid var(--line); }
 .adb-actions { display:flex; gap:var(--s2); margin-left:auto; }
 .workspace-layout-form { display:contents; }
+
+
+/* 13e ── SETTINGS TOGGLES ────────────────────────────────────
+   A setting that is on or off reads as a switch (§5); a checkbox is
+   kept for the lists where several things are picked at once — the
+   climate modes and the icon grid. The element stays an <input> in
+   both cases so the forms still collect it. */
+
+:is(.settings-card, .workspace-panel fieldset, .inspector .widget-body) > label.check > input[type="checkbox"],
+.inspector .inline-checks > label.check > input[type="checkbox"] {
+  appearance:none; position:relative; flex:none; width:36px; height:20px;
+  border:0; border-radius:999px; background:var(--line); cursor:pointer; transition:background .12s;
+}
+:is(.settings-card, .workspace-panel fieldset, .inspector .widget-body) > label.check > input[type="checkbox"]::after,
+.inspector .inline-checks > label.check > input[type="checkbox"]::after {
+  content:''; position:absolute; left:2px; top:2px; width:16px; height:16px;
+  border-radius:50%; background:var(--muted); transition:left .12s, background .12s;
+}
+:is(.settings-card, .workspace-panel fieldset, .inspector .widget-body) > label.check > input[type="checkbox"]:checked,
+.inspector .inline-checks > label.check > input[type="checkbox"]:checked { background:var(--accent); }
+:is(.settings-card, .workspace-panel fieldset, .inspector .widget-body) > label.check > input[type="checkbox"]:checked::after,
+.inspector .inline-checks > label.check > input[type="checkbox"]:checked::after { left:18px; background:var(--on-accent); }
+
+/* The multi-select lists keep the tick, and keep it small. */
+.mode-choices .check input[type="checkbox"], .icon-grid input[type="checkbox"] {
+  appearance:none; width:16px; height:16px; border:1px solid var(--disabled);
+  border-radius:var(--radius); background:transparent;
+}
+.mode-choices .check input[type="checkbox"]::after { content:none; }
+.mode-choices .check input[type="checkbox"]:checked {
+  background:var(--accent); border-color:var(--accent); position:relative;
+}
+.mode-choices .check input[type="checkbox"]:checked::after {
+  content:'✓'; position:static; display:block; width:auto; height:auto; background:none;
+  color:var(--on-accent); font:700 11px/14px var(--font); text-align:center;
+}
+
+/* Disclosure rows are rows, and they take the design's focus ring rather
+   than the browser's blue outline. */
+.workspace-panel details, .inspector details { border:1px solid var(--line); }
+.workspace-panel details > summary, .inspector details > summary {
+  min-height:var(--row); display:flex; align-items:center; gap:var(--s2);
+  padding:0 var(--s3); list-style:none; }
+.workspace-panel details > summary::-webkit-details-marker,
+.inspector details > summary::-webkit-details-marker { display:none; }
+.workspace-panel details > summary::before, .inspector details > summary::before {
+  content:'▸'; color:var(--muted); }
+.workspace-panel details[open] > summary::before, .inspector details[open] > summary::before { content:'▾'; }
+.workspace-panel details > summary:focus-visible, .inspector details > summary:focus-visible {
+  outline:2px solid var(--accent); outline-offset:-2px; }
+.mode-choices summary b, .icon-picker summary b { margin-left:auto; float:none; }
+.mode-choices .inline-checks { padding:10px var(--s3); gap:0; }
+.mode-choices .inline-checks > label.check { min-height:var(--row); }
+.mode-choices .inline-checks > label.check + label.check { border-top:1px solid var(--line); }
 
 
 /* 14 ── UTILITIES AND RESPONSIVE ──────────────────────────── */

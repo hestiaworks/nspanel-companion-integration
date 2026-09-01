@@ -321,7 +321,11 @@ async def ws_assign_scrypted_doorbell(hass, connection, msg) -> None:
 async def ws_list_panels(hass, connection, msg) -> None:
     """List sanitized panel records."""
     try:
-        connection.send_result(msg["id"], _registry(hass).list_public())
+        sockets = hass.data.get(DOMAIN, {}).get(DATA_PANEL_SOCKETS, {})
+        connection.send_result(msg["id"], [
+            {**panel, "connected": panel["panel_id"] in sockets}
+            for panel in _registry(hass).list_public()
+        ])
     except ValueError as err:
         connection.send_error(msg["id"], "not_configured", str(err))
 
