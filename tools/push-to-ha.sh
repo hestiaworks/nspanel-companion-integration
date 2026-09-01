@@ -28,9 +28,9 @@ fi
 if [ "${1:-}" = "--all" ]; then
   # --delete would take files this checkout does not carry, so it is not used:
   # a stray file is recoverable, someone's live integration is not.
-  rsync -a --exclude "__pycache__" "$source_dir/" "$target/"
+  rsync -rlD --inplace --no-times --exclude "__pycache__" "$source_dir/" "$target/"
   echo "Copied the whole integration. Restart Home Assistant for the Python to take."
 else
-  rsync -a "$source_dir/frontend/" "$target/frontend/"
+  rsync -rlD --inplace --no-times "$source_dir/frontend/" "$target/frontend/"
   echo "Copied the frontend. Hard-refresh the browser (⌘⇧R) — no restart needed."
 fi
