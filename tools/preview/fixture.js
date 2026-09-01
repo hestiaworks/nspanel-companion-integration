@@ -40,11 +40,15 @@ export const STATES = {
 
 const RESPONSES = {
   "nspanel_companion/panels/list": PANELS,
-  "nspanel_companion/scrypted/list": { bridges: [
-    { bridge_id: "front-door", name: "Front door bridge", base_url: "http://192.0.2.24:11080",
-      version: "0.9.4", cameras: 2, doorbells: 1 },
-  ] },
-  "nspanel_companion/updater/status": { paired: null, connected: false },
+  "nspanel_companion/scrypted/list": {
+    paired: [
+      { id: "front-door", name: "Front door bridge", base_url: "http://192.0.2.24:11080", version: "0.9.4" },
+    ],
+    discovered: [
+      { id: "garage", name: "Garage bridge", base_url: "http://192.0.2.31:11080", version: "0.9.4" },
+    ],
+  },
+  "nspanel_companion/updater/status": { paired: { base_url: "http://192.0.2.10:8098" } },
 };
 
 /** Install the stand-in on window, the way Home Assistant hands it to a panel. */

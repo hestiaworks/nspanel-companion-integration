@@ -101,6 +101,8 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.token = null;
     this.editor = null;
     this.workspaceTab = "general";
+    /** Which top-level screen is showing: "home" or "integrations". */
+    this.view = window.location.hash === "#integrations" ? "integrations" : "home";
     this.routeHandler = () => this.restoreWorkspaceRoute();
     this.outsidePickerHandler = (event) => {
       const activePicker = event.composedPath().find((node) => node?.classList?.contains("entity-picker"));
@@ -151,6 +153,15 @@ class NSPanelCompanionPanel extends HTMLElement {
   }
 
   async restoreWorkspaceRoute() {
+    // Integrations is a route rather than a section on home, so it survives a
+    // refresh and can be linked to — §10: anything with a list is a route.
+    const integrations = window.location.hash === "#integrations";
+    if (integrations !== (this.view === "integrations")) {
+      this.view = integrations ? "integrations" : "home";
+      if (integrations && this.editor) this.editor = null;
+      this.render();
+      if (integrations) return;
+    }
     const route = this.parsedWorkspaceRoute();
     if (!route) {
       if (this.editor) { this.editor = null; this.render(); }
@@ -905,6 +916,20 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-adb-local]").forEach((button) =>
       button.addEventListener("click", () => this.updateAdbPanel(button.dataset.adbLocal, "local", button.dataset.migrateDebug === "true")));
     this.shadowRoot.querySelector("#refresh")?.addEventListener("click", () => this.loadPanels());
+    const openIntegrations = this.shadowRoot.querySelector("#open-integrations");
+    if (openIntegrations) {
+      const go = () => { window.location.hash = "#integrations"; };
+      openIntegrations.addEventListener("click", go);
+      openIntegrations.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); go(); }
+      });
+    }
+    this.shadowRoot.querySelector("#back-home")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      history.pushState(null, "", `${window.location.pathname}${window.location.search}`);
+      this.view = "home";
+      this.render();
+    });
     this.shadowRoot.querySelector("#find-panels-empty")?.addEventListener("click", () => this.openPanelFinder());
     this.shadowRoot.querySelector("#find-panels")?.addEventListener("click", () => this.openPanelFinder());
     this.shadowRoot.querySelector("#close-panel-finder")?.addEventListener("click", () => this.closePanelFinder());
@@ -1071,12 +1096,12 @@ class NSPanelCompanionPanel extends HTMLElement {
   integrationStrip() {
     const bridges = (this.scrypted?.paired || []).length;
     const updater = this.updater?.paired;
-    return `<div class="integration-strip">
+    return `<div class="integration-strip" id="open-integrations" role="button" tabindex="0">
       <div><span class="dot ${bridges ? "on" : "off"}"></span><span class="name">Scrypted intercom</span>
         <span class="state">${bridges ? `connected · ${bridges} bridge${bridges === 1 ? "" : "s"}` : "not set up"}</span></div>
       <div><span class="dot ${updater ? "on" : "off"}"></span><span class="name">Installation &amp; updates</span>
         <span class="state">${updater ? "connected" : "not set up"}</span></div>
-      <div class="go muted">Integrations →</div>
+      <div class="go">Integrations →</div>
     </div>`;
   }
 
@@ -1115,6 +1140,11 @@ class NSPanelCompanionPanel extends HTMLElement {
       this.bind();
       return;
     }
+    if (this.view === "integrations") {
+      this.shadowRoot.innerHTML = `<style>${STYLES}</style>${this.integrationsRoute()}`;
+      this.bind();
+      return;
+    }
     this.shadowRoot.innerHTML = `<style>${STYLES}</style>
       <div class="app-bar"><span class="mark"></span><span class="t-control">NSPanel Companion</span><span class="spacer"></span>
         <button id="refresh" class="quiet small" type="button" ${this.loading ? "disabled" : ""}>↻ Refresh</button></div>
@@ -1138,6 +1168,75 @@ class NSPanelCompanionPanel extends HTMLElement {
     const selected = this.pairingSelection;
     if (selected) return `<div class="scrim"><section class="dialog pairing-dialog"><div class="pairing-dialog-head"><button id="back-to-panels" type="button">← Back</button><span class="eyebrow">Pair panel</span></div><div class="pairing-dialog-body"><h2>${escapeHtml(selected.name)}</h2><p class="device-id">${escapeHtml(selected.device_id)}</p><p class="pairing-help">Enter the six-digit code displayed on this panel.</p><form class="pairing-form" data-panel-pair><input type="hidden" name="request_id" value="${escapeHtml(selected.request_id)}"><input class="pair-code pairing-entry" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus required placeholder="000000" aria-label="Pairing code"><div class="actions pairing-actions"><button id="close-panel-finder" type="button">Cancel</button><button class="primary" ${this.busy ? "disabled" : ""}>Pair panel</button></div></form></div></section></div>`;
     return `<div class="scrim"><section class="dialog"><div class="editor-head"><div><span class="eyebrow">Local discovery</span><h2>Find panels</h2><p>${this.busy ? "Scanning the local network…" : "Unpaired panels available on this network."}</p></div><button id="close-panel-finder">Close</button></div>${this.discoveredPanels.length ? `<div class="finder-list">${this.discoveredPanels.map((item) => `<button class="finder-panel" data-select-panel="${escapeHtml(item.id)}" ${this.busy ? "disabled" : ""}><span class="device-icon">▣</span><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.id)}</small></span><span>›</span></button>`).join("")}</div>` : `<div class="empty"><b>${this.busy ? "Searching for panels…" : "No unpaired panels found"}</b><span>Keep the pairing screen open on the NSPanel and try again.</span></div>`}<label class="check discovery-option"><input id="passive-discovery" type="checkbox" ${this.passivePanelDiscovery ? "checked" : ""} ${this.busy ? "disabled" : ""}> Keep panel discovery running in the background</label><small>Off by default. When disabled, HA scans only after you press Find panels or Search again.</small><div class="actions"><button id="refresh-panel-finder" ${this.busy ? "disabled" : ""}>Search again</button></div></section></div>`;
+  }
+
+  /**
+   * Everything that is paired once and then forgotten.
+   *
+   * §6b: each service is one band — a header row saying what it is and
+   * whether it is connected, its detail beneath — so a service nobody has set
+   * up costs four lines instead of half the screen.
+   */
+  integrationsRoute() {
+    return `<div class="app-bar"><span class="mark"></span>
+        <div class="crumbs"><a href="#" id="back-home">NSPanel Companion</a><span class="sep">/</span><span class="here">Integrations</span></div>
+        <span class="spacer"></span>
+        <button id="refresh" class="quiet small" type="button" ${this.busy ? "disabled" : ""}>↻ Refresh</button></div>
+      <main>
+        ${this.error ? `<div class="notice error">${escapeHtml(this.error)}</div>` : ""}
+        <div class="page-head"><div><h1 class="t-page">Integrations</h1><p>Optional services. Pair once — panels pick the change up on their next sync.</p></div></div>
+        ${this.scryptedService()}
+        ${this.updaterService()}
+      </main>`;
+  }
+
+  /** The Scrypted bridge as a band. */
+  scryptedService() {
+    const paired = this.scrypted?.paired || [];
+    const pairedIds = new Set(paired.map((item) => item.id));
+    const available = (this.scrypted?.discovered || []).filter((item) => !pairedIds.has(item.id));
+    const head = `<div class="head"><span class="name">Scrypted intercom</span>
+      <span class="what">Video and two-way audio for doorbell pages</span><span class="spacer"></span>
+      <span class="status ${paired.length ? "online" : "offline"}">${paired.length ? "connected" : "not set up"}</span></div>`;
+    const rows = paired.map((item) => `<div class="detail">
+        <div class="grow"><div class="t-control">${escapeHtml(item.name)}</div>
+          <div class="id">${escapeHtml(item.base_url)}${item.version ? ` · v${escapeHtml(item.version)}` : ""}</div></div>
+        <button class="small" data-scrypted-unpair="${escapeHtml(item.id)}" ${this.busy ? "disabled" : ""}>Unpair</button>
+        <button class="small danger quiet" data-scrypted-clear="${escapeHtml(item.id)}" ${this.busy ? "disabled" : ""}>Unpair + clear</button>
+      </div>`).join("");
+    const offers = available.map((item) => `<form class="detail" data-scrypted-pair>
+        <input type="hidden" name="base_url" value="${escapeHtml(item.base_url)}">
+        <div class="grow"><div class="t-control">${escapeHtml(item.name)}</div><div class="id">${escapeHtml(item.base_url)}</div></div>
+        <button class="small primary" ${this.busy ? "disabled" : ""}>Pair</button>
+      </form>`).join("");
+    return `<section class="service ${paired.length ? "" : "inactive"}">${head}${rows}${offers}
+      <div class="foot">Install NSPanel Talkback in Scrypted and further bridges appear here on their own.</div></section>`;
+  }
+
+  /** The updater add-on as a band, with the ADB list only after a scan. */
+  updaterService() {
+    const paired = this.updater?.paired;
+    const head = `<div class="head"><span class="name">Installation &amp; updates</span>
+      <span class="what">Discover ADB panels and install signed releases</span><span class="spacer"></span>
+      <span class="status ${paired ? "online" : "offline"}">${paired ? "connected" : "not set up"}</span></div>`;
+    if (!paired) {
+      return `<section class="service inactive">${head}
+        <div class="foot">Start the NSPanel Companion Updater add-on — it connects here on its own.</div>
+        <form class="detail" id="updater-pair">
+          <div class="grow"><input name="base_url" placeholder="http://homeassistant.local:8098" value=""></div>
+          <input name="code" class="mono" style="flex:0 0 120px" inputmode="numeric" maxlength="6" placeholder="000000" aria-label="Pairing code">
+          <button class="small primary" ${this.busy ? "disabled" : ""}>Pair</button>
+        </form>
+        <div class="foot">The six-digit code is printed in the add-on log. ADB discovery and installs appear here once paired.</div></section>`;
+    }
+    return `<section class="service">${head}
+      <form class="detail" id="adb-discovery">
+        <div class="grow"><input id="adb-subnet" name="subnet" value="192.168.0.0/24" pattern="[0-9./]+" required aria-label="Private subnet"></div>
+        <button class="small" ${this.busy ? "disabled" : ""}>${this.busy ? "Working…" : "Scan subnet"}</button>
+        <button type="button" class="small quiet" id="updater-unpair" ${this.busy ? "disabled" : ""}>Unpair</button>
+      </form>
+      ${this.updaterMessage ? `<div class="detail"><div class="notice plain grow">${escapeHtml(this.updaterMessage)}</div></div>` : ""}
+      ${this.adbDevices.length ? this.adbDevices.map((device) => this.adbDeviceCard(device)).join("") : `<div class="foot">No devices yet — scan the subnet above.</div>`}</section>`;
   }
 
   scryptedSection() {
