@@ -5,7 +5,22 @@ from __future__ import annotations
 import re
 from typing import Any
 
-RING_SOUNDS = {"off", "chime", "bell", "ping"}
+RING_SOUNDS = {"off", "chime_1", "chime_2", "chime_3"}
+
+# The three sounds the first audio build shipped, since replaced. A layout
+# still naming one is normalised to silence rather than refused: the sound is
+# gone either way, and refusing would leave a panel unable to publish
+# anything at all until someone found the field that named it.
+RETIRED_SOUNDS = {"chime", "bell", "ping"}
+
+
+def _sound(value: str, field: str) -> str:
+    name = str(value).strip() or "off"
+    if name in RETIRED_SOUNDS:
+        return "off"
+    if name not in RING_SOUNDS:
+        raise ValueError(f"Invalid {field}")
+    return name
 
 SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor", "camera", "history", "intercom"}
 # The spans a history page offers. How many bars each becomes is history.py's
@@ -157,9 +172,7 @@ def validate_layout(value: Any) -> dict[str, Any]:
         auto_close_ms = int(doorbell.get("auto_close_ms", 60000))
         if not 10000 <= auto_close_ms <= 300000:
             raise ValueError("Doorbell timeout must be 10–300 seconds")
-        chime = str(doorbell.get("chime", "off")).strip() or "off"
-        if chime not in RING_SOUNDS:
-            raise ValueError("Invalid doorbell chime")
+        chime = _sound(doorbell.get("chime", "off"), "doorbell chime")
         chime_volume = int(doorbell.get("chime_volume", 70))
         if not 0 <= chime_volume <= 100:
             raise ValueError("Doorbell chime volume must be 0–100")
@@ -210,9 +223,7 @@ def validate_layout(value: Any) -> dict[str, Any]:
     if intercom is not None and not isinstance(intercom, dict):
         raise ValueError("Intercom configuration must be an object")
     intercom = intercom or {}
-    ring = str(intercom.get("ring", "off")).strip() or "off"
-    if ring not in RING_SOUNDS:
-        raise ValueError("Invalid intercom ring")
+    ring = _sound(intercom.get("ring", "off"), "intercom ring")
     ring_volume = int(intercom.get("ring_volume", 70))
     if not 0 <= ring_volume <= 100:
         raise ValueError("Intercom ring volume must be 0–100")

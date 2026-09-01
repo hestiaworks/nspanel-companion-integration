@@ -373,11 +373,23 @@ class AudioSettingsTest(unittest.TestCase):
     def test_it_keeps_the_chosen_sound_and_volume(self):
         value = layout_module.validate_layout(self.base(
             doorbell={"trigger_entity_id": "binary_sensor.bell",
-                      "chime": "bell", "chime_volume": 40},
-            intercom={"enabled": True, "ring": "ping", "ring_volume": 90},
+                      "chime": "chime_2", "chime_volume": 40},
+            intercom={"enabled": True, "ring": "chime_3", "ring_volume": 90},
         ))
-        self.assertEqual(("bell", 40), (value["doorbell"]["chime"], value["doorbell"]["chime_volume"]))
-        self.assertEqual(("ping", 90), (value["intercom"]["ring"], value["intercom"]["ring_volume"]))
+        self.assertEqual(("chime_2", 40), (value["doorbell"]["chime"], value["doorbell"]["chime_volume"]))
+        self.assertEqual(("chime_3", 90), (value["intercom"]["ring"], value["intercom"]["ring_volume"]))
+
+    def test_a_sound_that_was_removed_becomes_silence_rather_than_an_error(self):
+        # The first three sounds shipped were replaced. A panel still holding
+        # one of those names must keep publishing: the sound is gone, so the
+        # honest record is that it makes none — not a layout that cannot be
+        # saved until someone finds the field.
+        value = layout_module.validate_layout(self.base(
+            doorbell={"trigger_entity_id": "binary_sensor.bell", "chime": "bell"},
+            intercom={"enabled": True, "ring": "ping"},
+        ))
+        self.assertEqual("off", value["doorbell"]["chime"])
+        self.assertEqual("off", value["intercom"]["ring"])
 
     def test_it_refuses_a_sound_the_panel_does_not_carry(self):
         with self.assertRaises(ValueError):
