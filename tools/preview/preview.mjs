@@ -39,8 +39,14 @@ const settle = Number(opt("settle", 900));
 // Some states are reached by clicking, not by a URL — a selected slot most
 // of all. This drives the element the way a person would.
 const select = opt("select", null);
-/** Click something by id after mount, for states that are behind a button. */
-const click = opt("click", null);
+/**
+ * Click something after mount, for states that are behind a button.
+ *
+ * Repeatable, and clicked in order: reaching a state often takes two — open
+ * the picker, then choose from it. A single --click silently ignoring the
+ * second one made a broken flow look like a working one.
+ */
+const clicks = args.flatMap((arg, i) => (arg === "--click" ? [args[i + 1]] : []));
 
 const work = mkdtempSync(join(tmpdir(), "nspanel-preview-"));
 writeFileSync(join(work, "panel.js"), `${execFileSync("cat", [PANEL])}`);
@@ -61,9 +67,13 @@ writeFileSync(join(work, "harness.html"), `<!doctype html>
   window.addEventListener("error", (event) => failures.push(event.message));
   window.addEventListener("unhandledrejection", (event) => failures.push(String(event.reason)));
   el.hass = fakeHass();
-  ${click === null ? "" : `
+  ${clicks.map((selector) => `
   await new Promise((done) => setTimeout(done, 400));
-  el.shadowRoot.querySelector(${JSON.stringify(click)})?.click();`}
+  {
+    const target = el.shadowRoot.querySelector(${JSON.stringify(selector)});
+    if (!target) failures.push("no element matches " + ${JSON.stringify(selector)});
+    target?.click();
+  }`).join("")}
   ${select === null ? "" : `
   await new Promise((done) => setTimeout(done, 400));
   const slot = el.shadowRoot.querySelector('[data-select-widget="${select}"]');

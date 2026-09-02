@@ -606,6 +606,10 @@ class NSPanelCompanionPanel extends HTMLElement {
     const page = { id: this.pageIdFor(title), title: title.slice(0, 48), widgets: [] };
     this.editor.draftPages.push(page);
     this.editor.activePageId = page.id;
+    this.editor.selectedWidgetIndex = null;
+    // What a page shows is the first thing to decide about it, so the picker
+    // is open on arrival rather than behind a slot.
+    this.editor.adding = page.id;
     history.pushState(null, "", this.workspaceRoute(this.editor.panel.panel_id, "pages", page.id));
     this.error = "";
     this.render();
@@ -641,6 +645,9 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.render();
   }
 
+  /** The types that take the whole 480 × 480, so a page holds exactly one. */
+  static fullScreenTypes = ["thermostat", "weather", "camera", "history", "intercom"];
+
   widgetTemplate(type) {
     if (type === "weather") return { type, forecast_days: 5, show_hourly: true };
     if (type === "entity_button") return { type, icon: "auto", show_timer: true, show_schedule: true, timer_presets: [5, 15, 30, 60], card_tap: false, show_fan_speed: false };
@@ -666,13 +673,18 @@ class NSPanelCompanionPanel extends HTMLElement {
       this.render();
       return;
     }
-    const isFullScreen = ["thermostat", "weather", "camera"].includes(type);
-    if ((isFullScreen && page.widgets.length) || (!isFullScreen && page.widgets.some((item) => ["thermostat", "weather", "camera"].includes(item.type)))) {
-      this.error = "Thermostat, weather, and camera use the full panel screen. Put each on its own page.";
+    const full = NSPanelCompanionPanel.fullScreenTypes;
+    const isFullScreen = full.includes(type);
+    if ((isFullScreen && page.widgets.length) || (!isFullScreen && page.widgets.some((item) => full.includes(item.type)))) {
+      this.error = "Thermostat, weather, camera, history, and intercom use the full panel screen. Put each on its own page.";
       this.render();
       return;
     }
     page.widgets.push(this.widgetTemplate(type));
+    // A component is not finished when it is chosen — it still needs its
+    // entity. Land on its form rather than on the page's.
+    this.editor.adding = null;
+    this.editor.selectedWidgetIndex = page.widgets.length - 1;
     this.error = "";
     this.render();
   }
@@ -1777,7 +1789,7 @@ class NSPanelCompanionPanel extends HTMLElement {
    */
   pageBoard(page, pageIndex) {
     const widgets = page.widgets || [];
-    const full = widgets.some((widget) => ["thermostat", "weather", "camera", "history", "intercom"].includes(widget.type));
+    const full = widgets.some((widget) => NSPanelCompanionPanel.fullScreenTypes.includes(widget.type));
     const capacity = full ? 1 : 4;
     const slots = widgets.map((widget, index) => {
       const selected = this.editor.selectedWidgetIndex === index;
@@ -1790,10 +1802,14 @@ class NSPanelCompanionPanel extends HTMLElement {
         ${flags ? `<span class="flags">${escapeHtml(flags)}</span>` : ""}
       </div>`;
     }).join("");
-    const empties = Math.max(0, capacity - widgets.length);
+    // A page with nothing on it has no shape yet: drawing four slots said it
+    // was a controls page, which most pages are not. Ask instead.
+    const undecided = !widgets.length;
+    const empties = undecided ? 1 : Math.max(0, capacity - widgets.length);
     const adders = Array.from({ length: empties }, () =>
-      `<div class="slot empty" data-add-slot="${escapeHtml(page.id)}" tabindex="0" role="button">
-        <span class="plus">＋</span><span class="kind">ADD COMPONENT</span></div>`).join("");
+      `<div class="slot empty ${undecided ? "choose" : ""}" data-add-slot="${escapeHtml(page.id)}" tabindex="0" role="button">
+        <span class="plus">＋</span><span class="kind">${undecided ? "CHOOSE WHAT THIS PAGE SHOWS" : "ADD COMPONENT"}</span>
+        ${undecided ? `<span class="name">One full-screen component, or up to four controls</span>` : ""}</div>`).join("");
     return `<div class="stage">
       <div class="stage-head"><span class="t-control">${escapeHtml(page.title || "Untitled")}</span>
         <span class="id">page id · ${escapeHtml(page.id)}</span><span class="grow"></span>
@@ -1801,9 +1817,12 @@ class NSPanelCompanionPanel extends HTMLElement {
       <div class="board">
         <div class="board-status"><span>STATUS BAR · CLOCK · MIC</span>
           <span class="pager">${this.editor.draftPages.map((_, index) => `<i class="${index === pageIndex ? "on" : ""}"></i>`).join("")}</span></div>
-        <div class="slots ${full ? "full" : ""}">${slots}${adders}</div>
+        <div class="slots ${full || undecided ? "full" : ""}">${slots}${adders}</div>
       </div>
-      <div class="stage-foot"><span class="grow">${full ? "One slot, no add affordance. Swapping the type is the only edit the board offers." : `Click a slot to edit it · slot ${widgets.length} of ${capacity}`}</span>
+      <div class="stage-foot"><span class="grow">${undecided
+          ? "Thermostat, weather, camera, history and intercom take the whole screen. Only home controls and sensors share a page, four at most."
+          : full ? "One slot, no add affordance. Swapping the type is the only edit the board offers."
+          : `Click a slot to edit it · slot ${widgets.length} of ${capacity}`}</span>
         <button type="button" class="small" data-page-action="duplicate" data-page-index="${pageIndex}" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Duplicate page</button>
         <button type="button" class="small danger quiet" data-page-action="delete" data-page-index="${pageIndex}">Delete page</button></div>
     </div>`;
@@ -1812,12 +1831,12 @@ class NSPanelCompanionPanel extends HTMLElement {
   /** The component types, with why each one is or is not available here. */
   addComponentPanel(page) {
     const widgets = page.widgets || [];
-    const full = ["thermostat", "weather", "camera", "history", "intercom"];
+    const full = NSPanelCompanionPanel.fullScreenTypes;
     const occupied = widgets.length > 0;
     const hasFull = widgets.some((widget) => full.includes(widget.type));
     const types = [
-      ["entity_button", "Home control", "Light, fan, switch, cover", hasFull || widgets.length >= 4],
-      ["sensor", "Sensor", "One reading, no controls", hasFull],
+      ["entity_button", "Home control", "Light, fan, switch, cover — four to a page", hasFull || widgets.length >= 4],
+      ["sensor", "Sensor", "One reading, shares the page with controls", hasFull],
       ["thermostat", "Thermostat", "Full screen — needs an empty page", occupied],
       ["weather", "Weather", "Full screen — needs an empty page", occupied],
       ["camera", "Camera", "Full screen — needs Scrypted", occupied],
@@ -1827,7 +1846,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       types.push(["intercom", "Intercom", "Full screen — call another panel", occupied]);
     }
     return `<div class="inspector">
-      <div class="inspector-head"><span class="t-label accent">Add to slot ${widgets.length + 1}</span>
+      <div class="inspector-head"><span class="t-label accent">${occupied ? `Add to slot ${widgets.length + 1}` : "What this page shows"}</span>
         <span class="grow"></span>
         <button type="button" class="quiet small" id="cancel-add" title="Close">✕</button></div>
       <div class="inspector-body" style="padding:0">
@@ -2519,6 +2538,10 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .slot.selected::after { content:'EDITING'; position:absolute; top:-1px; right:-1px; background:var(--accent); color:var(--on-accent); font:700 10px/1 var(--mono); letter-spacing:.1em; padding:3px 7px; }
 .slot.empty { border:1px dashed var(--disabled); display:flex; align-items:center; justify-content:center; gap:6px; flex-direction:column; color:var(--muted); }
 .slot.empty .plus { font-size:20px; line-height:1; }
+/* The undecided page: one prompt, not a grid of them. */
+.slot.empty.choose { border-color:var(--muted); }
+/* .slot .name is bottom-anchored for a filled slot; here it is a caption. */
+.slot.empty.choose .name { color:var(--muted); font:400 12px/1.3 var(--mono); margin-top:0; }
 .slot.dragging { opacity:.45; }
 .slot.drop-target { border-color:var(--accent); }
 
