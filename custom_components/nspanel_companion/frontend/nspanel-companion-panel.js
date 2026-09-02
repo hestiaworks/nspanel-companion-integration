@@ -1106,7 +1106,21 @@ class NSPanelCompanionPanel extends HTMLElement {
         row.className = "select-option";
         row.setAttribute("role", "option");
         row.tabIndex = -1;
-        row.textContent = option.textContent;
+        const text = option.textContent || "";
+        const split = text.lastIndexOf(" · ");
+        const tail = split === -1 ? "" : text.slice(split + 3);
+        if (/^[a-z_]+\.[a-z0-9_]+$/.test(tail)) {
+          row.classList.add("two-line");
+          const name = document.createElement("b");
+          name.className = "truncate";
+          name.textContent = text.slice(0, split);
+          const id = document.createElement("small");
+          id.className = "id truncate";
+          id.textContent = tail;
+          row.append(name, id);
+        } else {
+          row.textContent = text;
+        }
         row.addEventListener("click", () => choose(index));
         row.addEventListener("keydown", (event) => {
           const rows = [...list.children];
@@ -2501,7 +2515,9 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .entity-picker { position:relative; }
 .entity-results { border:1px solid var(--line); border-top:0; margin-top:-1px; max-height:280px; overflow:auto; background:var(--canvas); }
 .entity-results button { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; width:100%; height:52px; border:0; border-radius:0; background:transparent; padding:0 var(--s3); text-align:left; }
+.entity-results { overflow-x:hidden; }
 .entity-results button + button { border-top:1px solid var(--line); }
+.entity-results b, .entity-results small { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .entity-results button:hover, .entity-results button[aria-selected="true"] { background:var(--surface-raised); }
 .entity-results b { font:400 14px/1.2 var(--font); }
 .entity-results small { font:500 12px/1.3 var(--mono); color:var(--muted); }
@@ -2788,7 +2804,7 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .select-list {
   position:fixed; z-index:30;
   border:1px solid var(--line); border-top:0;
-  background:var(--canvas); overflow:auto;
+  background:var(--canvas); overflow-y:auto; overflow-x:hidden;
 }
 /* Opening upwards joins the field along its top edge instead. */
 .select-wrap.up .select-list { border-top:1px solid var(--line); border-bottom:0; }
@@ -2796,7 +2812,12 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .select-option {
   min-height:var(--row); display:flex; align-items:center;
   padding:0 var(--s3); font:400 14px/1.3 var(--font); cursor:pointer;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
+/* An entity reads as a name over its id, both clipped to the column. */
+.select-option.two-line { flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; padding-top:8px; padding-bottom:8px; }
+.select-option.two-line b { font:400 14px/1.2 var(--font); max-width:100%; }
+.select-option.two-line small { max-width:100%; }
 .select-option + .select-option { border-top:1px solid var(--line); }
 .select-option:hover { background:var(--surface-raised); }
 .select-option.selected { background:var(--accent-wash); box-shadow:inset 3px 0 0 var(--accent); }

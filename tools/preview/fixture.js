@@ -53,6 +53,9 @@ export const STATES = {
   "cover.living_blinds": { entity_id: "cover.living_blinds", state: "open", attributes: { friendly_name: "Living room blinds" } },
   "switch.desk_monitor": { entity_id: "switch.desk_monitor", state: "off", attributes: { friendly_name: "Desk monitor" } },
   "sensor.bedroom_temp": { entity_id: "sensor.bedroom_temp", state: "21.0", attributes: { friendly_name: "Bedroom temp", unit_of_measurement: "°C", device_class: "temperature" } },
+  "binary_sensor.front_door_visitor": { entity_id: "binary_sensor.front_door_visitor", state: "off", attributes: { friendly_name: "Front Door Visitor" } },
+  "binary_sensor.front_door_person": { entity_id: "binary_sensor.front_door_person", state: "off", attributes: { friendly_name: "Front Door Person" } },
+  "binary_sensor.hallway_sensor_placement": { entity_id: "binary_sensor.hallway_sensor_placement", state: "off", attributes: { friendly_name: "Hallway Sensor Розміщення" } },
   "fan.desk": { entity_id: "fan.desk", state: "off", attributes: { friendly_name: "Desk fan" } },
 };
 
