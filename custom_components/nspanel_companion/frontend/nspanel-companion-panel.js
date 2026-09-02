@@ -2602,6 +2602,10 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .tabs button { height:100%; border:0; border-radius:0; background:transparent; color:var(--muted); padding:0 var(--s4); }
 .tabs button:hover { background:transparent; color:var(--ink); }
 .tabs button.active { color:var(--ink); box-shadow:inset 0 -2px 0 var(--accent); }
+/* The bar scrolls horizontally, and a scroller clips in both directions: the
+   global ring sits 1px outside its button, so a focused tab lost its top and
+   bottom edge. This one is drawn inside the tab instead. */
+.tabs button:focus-visible { outline-offset:-2px; }
 
 /* the only thing that writes */
 .save-state { font:400 13px/1 var(--font); color:var(--muted); }
