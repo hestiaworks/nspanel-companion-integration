@@ -1034,12 +1034,42 @@ class NSPanelCompanionPanel extends HTMLElement {
           row.setAttribute("aria-selected", index === select.selectedIndex ? "true" : "false");
         });
       };
-      const close = () => { list.hidden = true; field.setAttribute("aria-expanded", "false"); };
+      const close = () => {
+        list.hidden = true;
+        wrap.classList.remove("up");
+        field.setAttribute("aria-expanded", "false");
+      };
+      /**
+       * Put the list where there is room for it.
+       *
+       * Fixed rather than inline: the inspector and the dialogs scroll, and
+       * an inline list either pushes the page around or gets clipped by
+       * whichever ancestor owns the scrollbar. Fixed coordinates escape
+       * both, which is also what lets it open upwards when the field is
+       * near the bottom of the window.
+       */
+      const place = () => {
+        const rect = field.getBoundingClientRect();
+        const height = Math.min(list.scrollHeight, 260);
+        const below = window.innerHeight - rect.bottom - 8;
+        const up = below < height && rect.top - 8 > below;
+        wrap.classList.toggle("up", up);
+        list.style.width = `${rect.width}px`;
+        list.style.left = `${rect.left}px`;
+        list.style.maxHeight = `${Math.max(120, Math.min(260, up ? rect.top - 8 : below))}px`;
+        list.style.top = up ? "auto" : `${rect.bottom - 1}px`;
+        list.style.bottom = up ? `${window.innerHeight - rect.top - 1}px` : "auto";
+      };
       const open = () => {
         list.hidden = false;
+        place();
         field.setAttribute("aria-expanded", "true");
         (list.querySelector(".selected") || list.firstElementChild)?.focus();
       };
+      // A list pinned to the viewport would drift away from its field, so it
+      // closes rather than chasing it.
+      window.addEventListener("scroll", () => { if (!list.hidden) close(); }, true);
+      window.addEventListener("resize", () => { if (!list.hidden) close(); });
       const choose = (index) => {
         select.selectedIndex = index;
         select.dispatchEvent(new Event("input", { bubbles: true }));
@@ -2734,9 +2764,13 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .select-field:disabled { color:var(--disabled); }
 
 .select-list {
-  border:1px solid var(--line); border-top:0; margin-top:-1px;
-  background:var(--canvas); max-height:260px; overflow:auto;
+  position:fixed; z-index:30;
+  border:1px solid var(--line); border-top:0;
+  background:var(--canvas); overflow:auto;
 }
+/* Opening upwards joins the field along its top edge instead. */
+.select-wrap.up .select-list { border-top:1px solid var(--line); border-bottom:0; }
+.select-wrap.up .select-field[aria-expanded="true"] { border-top-color:transparent; border-bottom-color:var(--line); }
 .select-option {
   min-height:var(--row); display:flex; align-items:center;
   padding:0 var(--s3); font:400 14px/1.3 var(--font); cursor:pointer;
