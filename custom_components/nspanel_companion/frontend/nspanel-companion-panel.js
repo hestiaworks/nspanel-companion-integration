@@ -17,12 +17,12 @@ const SOUND_BASE = "/nspanel_companion/frontend/sounds";
  * will play, allowing for its speaker. Choosing a doorbell chime by name
  * alone means walking to the panel to find out.
  */
-const soundField = (label, name, value, volumeName, volume) => `
+const soundField = (label, name, value, volumeName, volume, form = "") => `
   <label>${label}<span class="sound-row">
-    <select name="${name}" data-sound-select>${RING_SOUNDS.map((sound) => `<option value="${sound.value}" ${(value || "off") === sound.value ? "selected" : ""}>${sound.label}</option>`).join("")}</select>
+    <select name="${name}" ${form ? `form="${form}"` : ""} data-sound-select>${RING_SOUNDS.map((sound) => `<option value="${sound.value}" ${(value || "off") === sound.value ? "selected" : ""}>${sound.label}</option>`).join("")}</select>
     <button type="button" class="sound-play" data-sound-play title="Play this sound">&#9654;</button>
   </span></label>
-  <label>${label} volume<input name="${volumeName}" type="number" min="0" max="100" value="${Number(volume ?? 70)}" data-sound-volume></label>`;
+  <label>${label} volume<input name="${volumeName}" ${form ? `form="${form}"` : ""} type="number" min="0" max="100" value="${Number(volume ?? 70)}" data-sound-volume></label>`;
 
 const DEFAULT_LAYOUT = (revision) => ({
   schema_version: 1,
@@ -147,7 +147,7 @@ class NSPanelCompanionPanel extends HTMLElement {
   parsedWorkspaceRoute() {
     const match = window.location.hash.match(/^#panel\/([^/]+)(?:\/([^/]+))?(?:\/([^/]+))?$/);
     if (!match) return null;
-    const tabs = new Set(["general", "pages", "doorbell", "diagnostics"]);
+    const tabs = new Set(["general", "pages", "doorbell", "intercom", "diagnostics"]);
     let tab = decodeURIComponent(match[2] || "general");
     // Advanced was folded into diagnostics, so a link someone kept still
     // lands where its contents went rather than silently on General.
@@ -1727,7 +1727,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         <button type="button" id="save-workspace" class="primary" ${this.busy ? "disabled" : ""}>Save layout</button>
       </div>
       <nav class="tabs" aria-label="Panel configuration">
-        ${[["general", "General"], ["pages", "Pages"], ["doorbell", "Doorbell"], ["diagnostics", "Diagnostics"]]
+        ${[["general", "General"], ["pages", "Pages"], ["doorbell", "Doorbell"], ["intercom", "Intercom"], ["diagnostics", "Diagnostics"]]
           .map(([id, label]) => `<button type="button" data-workspace-tab="${id}" class="${tab === id ? "active" : ""}">${label}</button>`).join("")}
       </nav>`;
   }
@@ -1899,11 +1899,7 @@ class NSPanelCompanionPanel extends HTMLElement {
           <label>Panel theme<select name="theme_mode"><option value="inherit" ${this.editor.draftThemeMode === "inherit" ? "selected" : ""}>Auto · inherit Home Assistant</option><option value="light" ${this.editor.draftThemeMode === "light" ? "selected" : ""}>Light</option><option value="dark" ${this.editor.draftThemeMode === "dark" ? "selected" : ""}>Dark</option></select><small>Auto resolves the active Home Assistant light/dark appearance when the dashboard is published. Explicit Light or Dark stays fixed.</small></label>
           <fieldset class="dashboard-behavior"><legend>Dashboard behavior</legend><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>When disabled, the panel follows its Android display timeout.</small><label class="check"><input name="wake_on_approach" type="checkbox" ${layout.wake_on_approach ? "checked" : ""}> Wake the display when someone approaches</label><small>Uses the panel's proximity sensor. Ignored while the display is set to stay on.</small><label>Wake sensitivity<select name="wake_sensitivity"><option value="high" ${String(layout.wake_sensitivity || "medium") === "high" ? "selected" : ""}>High &middot; from across the room</option><option value="medium" ${String(layout.wake_sensitivity || "medium") === "medium" ? "selected" : ""}>Medium</option><option value="low" ${String(layout.wake_sensitivity || "medium") === "low" ? "selected" : ""}>Low &middot; only up close</option></select><small>The sensor measures reflected light, so a lighter wall or a shelf in front of the panel reads closer. Lower the sensitivity if it wakes on its own.</small></label><label class="check"><input name="show_clock" type="checkbox" ${layout.show_clock !== false ? "checked" : ""}> Show Home Assistant time</label><label class="check"><input name="show_mic_indicator" type="checkbox" ${layout.show_mic_indicator !== false ? "checked" : ""}> Show microphone privacy indicator</label><label>Keep microphone indicator green after use<input name="mic_indicator_linger_seconds" type="number" min="0" max="60" value="${Number(layout.mic_indicator_linger_seconds ?? 15)}"><small>Seconds; use 0 to show green only during active capture.</small></label></fieldset>
           <fieldset class="system-ui"><legend>Android system UI</legend><label>Navigation bar<select name="nav_bar_mode"><option value="listener" ${String(layout.nav_bar_mode || "listener") === "listener" ? "selected" : ""}>Hide, and re-hide when Android shows it</option><option value="immersive" ${String(layout.nav_bar_mode || "listener") === "immersive" ? "selected" : ""}>Suppress entirely (recommended)</option><option value="visible" ${String(layout.nav_bar_mode || "listener") === "visible" ? "selected" : ""}>Leave visible</option></select><small>Re-hiding lets the bar appear for a moment whenever a long press or an edge swipe summons it. Suppressing it stops Android summoning it at all.</small></label><label class="check"><input name="hide_accessibility_button" type="checkbox" ${layout.hide_accessibility_button ? "checked" : ""}> Hide the panel's floating back button</label><small>Suppressing the navigation bar and hiding the back button both need a system permission the updater add-on grants when it installs the app. If the panel has not been updated since this setting appeared, update it once and these will take effect.</small></fieldset>
-          <fieldset class="system-ui"><legend>Intercom</legend><label class="check"><input name="intercom_enabled" type="checkbox" ${layout.intercom?.enabled ? "checked" : ""}> Take part in the panel intercom</label><small>Two-way audio with your other panels, no camera. A panel with this off is not listed on other panels, cannot be called, and will not ring &mdash; and its intercom pages are not sent to it.</small>
-            ${soundField("Ring sound", "intercom_ring", layout.intercom?.ring, "intercom_ring_volume", layout.intercom?.ring_volume)}
-            <label class="check"><input name="intercom_noise_suppression" type="checkbox" ${layout.intercom?.noise_suppression !== false ? "checked" : ""}> Noise suppression</label>
-            <label class="check"><input name="intercom_auto_gain" type="checkbox" ${layout.intercom?.auto_gain !== false ? "checked" : ""}> Automatic gain</label>
-            <small>This panel has no audio effects of its own, so both are done in software by WebRTC. Turning them off is worth trying only if a call sounds processed or the far end cuts in and out.</small></fieldset>
+          
           <label>Stable device ID<input value="${escapeHtml(panel.device_id)}" readonly></label>
           <dl><div><dt>Connection</dt><dd>${panel.revoked ? "Revoked" : panel.connected ? "Connected" : "Not connected"}</dd></div><div><dt>Registered</dt><dd>${formatDate(panel.created_at)}</dd></div><div><dt>App version</dt><dd>${escapeHtml(panel.app_version || "—")}</dd></div></dl>
           <div class="actions"><button class="primary" type="submit" ${this.busy ? "disabled" : ""}>Save general settings</button><button type="button" data-restart-panel ${this.busy ? "disabled" : ""}>Restart app</button><button type="button" data-reboot-panel ${this.busy ? "disabled" : ""}>Reboot panel</button></div>
@@ -1966,6 +1962,28 @@ class NSPanelCompanionPanel extends HTMLElement {
           <div class="row"><span class="grow t-small">Send a test ring to this panel with the settings above, as published.</span><button data-test-doorbell="${escapeHtml(panel.panel_id)}" type="button" ${this.busy || panel.revoked ? "disabled" : ""}>Test doorbell</button></div>
         </section>
       </form>
+      <section class="workspace-panel" data-workspace-panel="intercom" ${tab === "intercom" ? "" : "hidden"}>
+        <div class="workspace-grid"><div class="stack">
+        <div class="workspace-intro"><h3>Intercom</h3><p>Two-way audio between this panel and your others, with no camera.</p></div>
+        <div class="settings-card">
+          <label class="check"><input name="intercom_enabled" form="panel-general" type="checkbox" ${layout.intercom?.enabled ? "checked" : ""}> Take part in the panel intercom</label>
+          <small>A panel with this off is not listed on other panels, cannot be called, and will not ring &mdash; and its intercom pages are not sent to it.</small>
+          ${soundField("Ring sound", "intercom_ring", layout.intercom?.ring, "intercom_ring_volume", layout.intercom?.ring_volume, "panel-general")}
+          <small>The panel that rings is the one this is set on, so each panel carries its own.</small>
+          <label class="check"><input name="intercom_noise_suppression" form="panel-general" type="checkbox" ${layout.intercom?.noise_suppression !== false ? "checked" : ""}> Noise suppression</label>
+          <label class="check"><input name="intercom_auto_gain" form="panel-general" type="checkbox" ${layout.intercom?.auto_gain !== false ? "checked" : ""}> Automatic gain</label>
+          <small>This panel has no audio effects of its own, so both are done in software by WebRTC. Turning them off is worth trying only if a call sounds processed or the far end cuts in and out.</small>
+        </div>
+        </div>
+        <aside class="stack">
+          <div><span class="section-label">Doorbell talkback</span>
+            <div class="band"><div class="row interactive" data-workspace-tab-link="doorbell" role="button" tabindex="0">
+              <span class="grow">Microphone gain and chime</span><span class="accent">Doorbell →</span></div></div>
+            <p class="t-small" style="margin-top:10px">The doorbell's hold-to-talk is a separate path from the intercom and is configured with the doorbell.</p>
+          </div>
+        </aside>
+        </div>
+      </section>
       <section class="workspace-panel" data-workspace-panel="diagnostics" ${tab === "diagnostics" ? "" : "hidden"}>
         <div class="workspace-grid"><div class="stack">
           <div><span class="section-label">Health</span>
