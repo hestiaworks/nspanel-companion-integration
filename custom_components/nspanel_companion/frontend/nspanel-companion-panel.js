@@ -1068,7 +1068,9 @@ class NSPanelCompanionPanel extends HTMLElement {
       };
       // A list pinned to the viewport would drift away from its field, so it
       // closes rather than chasing it.
-      window.addEventListener("scroll", () => { if (!list.hidden) close(); }, true);
+      window.addEventListener("scroll", (event) => {
+        if (!list.hidden && event.target !== list && !list.contains(event.target)) close();
+      }, true);
       window.addEventListener("resize", () => { if (!list.hidden) close(); });
       const choose = (index) => {
         select.selectedIndex = index;
