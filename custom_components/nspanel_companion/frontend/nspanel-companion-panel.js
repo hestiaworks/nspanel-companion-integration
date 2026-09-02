@@ -1162,7 +1162,6 @@ class NSPanelCompanionPanel extends HTMLElement {
     });
     this.shadowRoot.querySelectorAll("[data-select-page]").forEach((item) =>
       item.addEventListener("click", (event) => {
-        if (event.target.closest("[data-page-drag]")) return;
         this.syncPageDraftFromDom();
         this.selectDraftPage(item.dataset.selectPage);
       }));

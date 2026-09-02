@@ -8,5 +8,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/hestiaworks/nspanel-companion-integration/issues",
   "requirements": [],
-  "version": "0.47.2"
+  "version": "0.47.3"
 }
