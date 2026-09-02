@@ -2,6 +2,7 @@
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import re
 import unittest
 
 PATH = Path(__file__).parents[1] / "custom_components/nspanel_companion/layout.py"
@@ -114,6 +115,19 @@ class LayoutValidationTest(unittest.TestCase):
         layout["pages"][0]["widgets"][0]["icon"] = "javascript"
         with self.assertRaises(ValueError):
             layout_module.validate_layout(layout)
+
+    def test_every_icon_the_admin_offers_is_one_the_layout_accepts(self):
+        """The two lists are written by hand in two languages and one file
+        has no way to see the other. An icon offered in the picker but
+        missing here is refused at save with "Invalid control icon", which
+        names neither the icon nor the slot it came from.
+        """
+        panel = (Path(__file__).parents[1]
+                 / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js").read_text()
+        block = panel.split("const CONTROL_ICONS = [", 1)[1].split("\n];", 1)[0]
+        offered = set(re.findall(r'\["([a-z0-9-]+)", "', block))
+        self.assertTrue(offered, "could not read the admin icon list")
+        self.assertEqual(set(), offered - layout_module.CONTROL_ICONS)
 
     def test_validates_gradual_cover_scripts(self):
         layout = {

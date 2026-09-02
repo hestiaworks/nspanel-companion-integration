@@ -568,6 +568,10 @@ class NSPanelCompanionPanel extends HTMLElement {
       else if (value) widget[field] = field === "forecast_days" ? Number(value) : value;
       else delete widget[field];
     });
+    // After the fields, not during them: the entity is one input among many
+    // and the control options come after it in the form, so stripping them
+    // as the entity was read only let the next input put them back.
+    this.editor.draftPages.forEach((page) => (page.widgets || []).forEach(normalizeTile));
   }
 
   /**
@@ -649,11 +653,17 @@ class NSPanelCompanionPanel extends HTMLElement {
   /** The types that take the whole 480 × 480, so a page holds exactly one. */
   static fullScreenTypes = ["thermostat", "weather", "camera", "history", "intercom"];
 
+  /** What a tile may point at. The domain decides which kind of tile it is. */
+  static TILE_DOMAINS = ["light", "fan", "switch", "input_boolean", "cover",
+    "scene", "script", "automation", "sensor", "binary_sensor"];
+
+  /** A tile of a reading is a different widget type from a tile of a control. */
+  static tileTypeFor(entityId) {
+    return ["sensor", "binary_sensor"].includes(String(entityId).split(".")[0])
+      ? "sensor" : "entity_button";
+  }
+
   widgetTemplate(type) {
-    // Both make an entity_button — the panel has one kind of tile. They
-    // differ in what a tile for something you *run* should start as: no
-    // timer, no schedule, and the whole card acting on a tap.
-    if (type === "runnable") return { type: "entity_button", icon: "auto", show_timer: false, show_schedule: false, card_tap: true };
     if (type === "weather") return { type, forecast_days: 5, show_hourly: true };
     if (type === "entity_button") return { type, icon: "auto", show_timer: true, show_schedule: true, timer_presets: [5, 15, 30, 60], card_tap: false, show_fan_speed: false };
     if (type === "camera") return { type, incoming_audio: false, show_intercom: false };
@@ -1713,6 +1723,51 @@ class NSPanelCompanionPanel extends HTMLElement {
       <small>${tooMany ? `This unit reports ${reported.length} of them, which is more than the panel's sheet can show at once. ` : ""}Tick the ones worth having on a wall. None ticked shows every one the entity reports, and at most 8 can be chosen.</small></details>`;
   }
 
+  /**
+   * The one tile editor.
+   *
+   * A page of tiles has a single kind of slot, and what goes in it is a
+   * question about the entity, not about the slot: a light switches, a scene
+   * runs, a sensor only reads. Asking for the kind first made a sensor look
+   * like a kind of page, which it never was — the panel has always drawn one
+   * in the same grid as the controls.
+   *
+   * The options follow from the domain, so the form for a scene has no timer
+   * and the form for a sensor has nothing but its entity and its name.
+   */
+  tileEditor(page, widget, index, field, pickerKey) {
+    const entity = widget.entity_id || "";
+    const domain = entity.split(".")[0];
+    const reading = ["sensor", "binary_sensor"].includes(domain);
+    // Nothing to hold at a level and no state worth timing out: a button.
+    const runnable = ["scene", "script", "automation"].includes(domain);
+    const note = reading
+      ? "Shown as a reading. A sensor tile displays its value and does nothing when tapped."
+      : runnable
+        ? "Tapping this tile runs it: a scene is activated, a script or automation is run once."
+        : "The panel automatically uses the correct native control for this entity's capabilities.";
+    const picker = this.entityPicker(NSPanelCompanionPanel.TILE_DOMAINS, entity,
+      "Search lights, covers, scenes, sensors…", field, pickerKey);
+    if (reading) return `<label>Tile entity${picker}</label><small>${note}</small>`;
+    const checks = runnable ? "" : `
+      <label class="check"><input type="checkbox" ${field("show_timer")} ${widget.show_timer !== false ? "checked" : ""}> Show timer</label>
+      <label class="check"><input type="checkbox" ${field("show_schedule")} ${widget.show_schedule !== false ? "checked" : ""}> Show schedule</label>
+      <label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label>`;
+    const fanSpeed = domain === "fan" ? `
+      <label class="check"><input type="checkbox" ${field("show_fan_speed")} ${widget.show_fan_speed === true ? "checked" : ""}> Show fan speed control</label>` : "";
+    const presets = runnable ? "" : `
+      <label>Timer presets in minutes<input ${field("timer_presets")} value="${escapeHtml((widget.timer_presets || [5, 15, 30, 60]).join(", "))}" placeholder="5, 15, 30, 60">
+        <small>Up to four touch-friendly choices.</small></label>`;
+    const gradual = domain === "cover" ? `
+      <div class="widget-fields">
+        <label>Gradual open script (optional)${this.entityPicker(["script"], widget.gradual_open_script || widget.gradual_cover_script || null, "Search script entities…", field, `${pickerKey}-gradual-open`, "gradual_open_script")}</label>
+        <label>Gradual close script (optional)${this.entityPicker(["script"], widget.gradual_close_script || null, "Search script entities…", field, `${pickerKey}-gradual-close`, "gradual_close_script")}</label>
+      </div><small>Each configured script adds its matching action to curtain controls and schedules.</small>` : "";
+    return `<label>Tile entity${picker}</label><small>${note}</small>
+      ${this.iconPicker(page, widget, index, field)}
+      <div class="control-checks inline-checks">${checks}${fanSpeed}</div>${presets}${gradual}`;
+  }
+
   widgetEditor(page, widget, index) {
     const field = (name) => `data-widget-field="${name}" data-page-id="${escapeHtml(page.id)}" data-widget-index="${index}"`;
     const entity = widget.entity_id || "";
@@ -1723,9 +1778,9 @@ class NSPanelCompanionPanel extends HTMLElement {
     // A scene, script, or automation has nothing to hold at a level and no
     // state worth timing out: it is a button. Offering it a timer and a
     // schedule offered actions the panel would call meaningless services for.
-    const runnable = ["scene.", "script.", "automation."].some((prefix) => entity.startsWith(prefix));
-    if (widget.type === "entity_button") configuration = `<label>Control entity${this.entityPicker(["light", "fan", "switch", "input_boolean", "cover", "scene", "script", "automation"], entity, "Search lights, switches, covers, scenes…", field, pickerKey)}</label><small>${runnable ? "Tapping this tile runs it: a scene is activated, a script or automation is run once." : "The panel automatically uses the correct native control for this entity's capabilities."}</small>${this.iconPicker(page, widget, index, field)}<div class="control-checks inline-checks">${runnable ? "" : `<label class="check"><input type="checkbox" ${field("show_timer")} ${widget.show_timer !== false ? "checked" : ""}> Show timer</label><label class="check"><input type="checkbox" ${field("show_schedule")} ${widget.show_schedule !== false ? "checked" : ""}> Show schedule</label><label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label>`}${entity.startsWith("fan.") ? `<label class="check"><input type="checkbox" ${field("show_fan_speed")} ${widget.show_fan_speed === true ? "checked" : ""}> Show fan speed control</label>` : ""}</div>${runnable ? "" : `<label>Timer presets in minutes<input ${field("timer_presets")} value="${escapeHtml((widget.timer_presets || [5, 15, 30, 60]).join(", "))}" placeholder="5, 15, 30, 60"><small>Up to four touch-friendly choices.</small></label>`}${entity.startsWith("cover.") ? `<div class="widget-fields"><label>Gradual open script (optional)${this.entityPicker(["script"], widget.gradual_open_script || widget.gradual_cover_script || null, "Search script entities…", field, `${pickerKey}-gradual-open`, "gradual_open_script")}</label><label>Gradual close script (optional)${this.entityPicker(["script"], widget.gradual_close_script || null, "Search script entities…", field, `${pickerKey}-gradual-close`, "gradual_close_script")}</label></div><small>Each configured script adds its matching action to curtain controls and schedules.</small>` : ""}`;
-    if (widget.type === "sensor") configuration = `<label>Sensor entity${this.entityPicker(["sensor", "binary_sensor"], entity, "Search sensors…", field, pickerKey)}</label>`;
+    if (widget.type === "entity_button" || widget.type === "sensor") {
+      configuration = this.tileEditor(page, widget, index, field, pickerKey);
+    }
     if (widget.type === "intercom") configuration = this.editor?.layout?.intercom?.enabled
       ? `<small>Lists your other panels. Nothing to configure &mdash; the panel decides who it can call from who else is connected.</small>`
       : `<small>Intercom is switched off for this panel, so this page is not sent to it. Switch it on in general settings and the page returns &mdash; nothing here is lost.</small>`;
@@ -1863,31 +1918,23 @@ class NSPanelCompanionPanel extends HTMLElement {
     const hasFull = widgets.some((widget) => full.includes(widget.type));
     // The panel gives a grid page four cells, whatever is in them.
     const grid = hasFull || widgets.length >= 4;
-    const groups = [
-      ["Tiles · up to four on one page", [
-        ["entity_button", "Home control", "Light, fan, switch, cover", grid],
-        ["runnable", "Scene or script", "Also automations — tap to run", grid],
-        ["sensor", "Sensor", "One reading, no controls", grid],
-      ]],
-      ["Full screen · one to a page", [
-        ["thermostat", "Thermostat", "Heating and cooling", occupied],
-        ["weather", "Weather", "Forecast and conditions", occupied],
-        ["camera", "Camera", "Needs Scrypted", occupied],
-        ["history", "History", "One entity over time", occupied],
-        ...(this.editor?.layout?.intercom?.enabled
-          ? [["intercom", "Intercom", "Call another panel", occupied]] : []),
-      ]],
+    const types = [
+      ["entity_button", "Controls", "Up to four tiles: lights, covers, scenes, sensors", grid],
+      ["thermostat", "Thermostat", "Full screen", occupied],
+      ["weather", "Weather", "Full screen", occupied],
+      ["camera", "Camera", "Full screen — needs Scrypted", occupied],
+      ["history", "History", "Full screen — one entity over time", occupied],
+      ...(this.editor?.layout?.intercom?.enabled
+        ? [["intercom", "Intercom", "Full screen — call another panel", occupied]] : []),
     ];
     return `<div class="inspector">
       <div class="inspector-head"><span class="t-label accent">${occupied ? `Add to slot ${widgets.length + 1}` : "What this page shows"}</span>
         <span class="grow"></span>
         <button type="button" class="quiet small" id="cancel-add" title="Close">✕</button></div>
       <div class="inspector-body" style="padding:0">
-        ${groups.map(([heading, types]) => `
-          <div class="add-heading t-label">${heading}</div>
-          <div class="add-grid">${types.map(([type, name, note, disabled]) => `
-            <button type="button" data-add-type="${type}" data-add-page="${escapeHtml(page.id)}" ${disabled ? "disabled" : ""}>
-              <b>${name}</b><small>${note}</small></button>`).join("")}</div>`).join("")}
+        <div class="add-grid">${types.map(([type, name, note, disabled]) => `
+          <button type="button" data-add-type="${type}" data-add-page="${escapeHtml(page.id)}" ${disabled ? "disabled" : ""}>
+            <b>${name}</b><small>${note}</small></button>`).join("")}</div>
       </div>
     </div>`;
   }
@@ -2107,6 +2154,32 @@ const describePage = (page, title = "") => {
   const kinds = [...new Set(widgets.map((widget) => widget.type.replace("entity_button", "control")))];
   const summary = widgets.length === 1 ? kinds[0] : `${widgets.length} components`;
   return summary.toLowerCase() === String(title).trim().toLowerCase() ? "" : summary;
+};
+
+/**
+ * A tile is whichever kind its entity makes it.
+ *
+ * Choosing a sensor in a slot that held a light is not a different slot; it
+ * is the same slot pointed somewhere else. The type follows the domain, and
+ * the options that only a control has go with it — otherwise a saved sensor
+ * carried a timer, a schedule, and an icon the panel never draws.
+ */
+const normalizeTile = (widget) => {
+  if (!["entity_button", "sensor"].includes(widget.type)) return;
+  const domain = String(widget.entity_id || "").split(".")[0];
+  widget.type = ["sensor", "binary_sensor"].includes(domain) ? "sensor" : "entity_button";
+  const drop = (...keys) => keys.forEach((key) => delete widget[key]);
+  // Only what the new domain cannot use: a cover keeps its gradual scripts.
+  if (domain !== "cover") drop("gradual_open_script", "gradual_close_script", "gradual_cover_script");
+  if (domain !== "fan") drop("show_fan_speed");
+  if (widget.type === "sensor") {
+    drop("icon", "show_timer", "show_schedule", "card_tap", "timer_presets");
+    return;
+  }
+  if (["scene", "script", "automation"].includes(domain)) {
+    drop("show_timer", "show_schedule", "timer_presets");
+    widget.card_tap = true;
+  }
 };
 
 /** The options a slot has switched on, for the board's last line. */

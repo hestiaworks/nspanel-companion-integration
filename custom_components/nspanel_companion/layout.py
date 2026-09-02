@@ -30,7 +30,7 @@ SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sens
 # business; this only decides what a layout may ask for.
 HISTORY_RANGES = {"6h", "24h", "7d", "30d"}
 CONTROL_ICONS = {
-    "auto", "light", "ceiling-light", "floor-lamp", "wall-light", "led-strip", "spotlight",
+    "auto", "scene", "script", "automation", "light", "ceiling-light", "floor-lamp", "wall-light", "led-strip", "spotlight",
     "fan", "ceiling-fan", "ventilation", "power", "switch", "plug", "socket", "curtains", "cover",
     "blinds", "shutter", "garage", "radiator", "air-conditioner", "fireplace", "lock",
     "gate", "pump", "vacuum", "speaker",
