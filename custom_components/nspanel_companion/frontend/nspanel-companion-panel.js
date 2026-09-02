@@ -704,6 +704,21 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.render();
   }
 
+  /**
+   * Re-read the panel list without disturbing what is open.
+   *
+   * loadPanels() renders a loading state and then restores the route, which
+   * is right on a cold start and wrong after a save: it flashes home on the
+   * way back to where you already were.
+   */
+  async refreshPanelList() {
+    this.panels = await this.call({ type: "nspanel_companion/panels/list" });
+    if (this.editor) {
+      const fresh = this.panels.find((panel) => panel.panel_id === this.editor.panel.panel_id);
+      if (fresh) this.editor.panel = fresh;
+    }
+  }
+
   async saveEditor(form) {
     this.syncPageDraftFromDom();
     // The doorbell block below is built entirely from these values, so an
@@ -801,8 +816,13 @@ class NSPanelCompanionPanel extends HTMLElement {
           doorbell_id: scryptedDoorbellId,
         });
       }
-      this.editor = null;
-      await this.loadPanels();
+      // Publishing used to close the workspace and reload everything, which
+      // is why the panel list flashed up before the route put the workspace
+      // back. The save bar leaves you where you are (§7), so only the data
+      // behind the screen is refreshed.
+      this.editor.layout = layout;
+      this.editor.dirty = new Set();
+      await this.refreshPanelList();
     } catch (error) {
       this.editor.layout = layout;
       this.error = error?.message || "Unable to publish layout";
@@ -811,7 +831,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     finally {
       this.busy = false;
       saveButtons.forEach((button) => { button.disabled = false; });
-      if (!this.editor) this.render();
+      this.render();
     }
   }
 
