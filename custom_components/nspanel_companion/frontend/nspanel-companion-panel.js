@@ -611,6 +611,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     const title = typed || "New page";
     const page = { id: this.pageIdFor(title), title: title.slice(0, 48), widgets: [] };
     this.editor.draftPages.push(page);
+    this.markDirty("pages");
     this.editor.activePageId = page.id;
     this.editor.selectedWidgetIndex = null;
     // What a page shows is the first thing to decide about it, so the picker
@@ -640,6 +641,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       pages.splice(index, 1);
       if (this.editor.activePageId === current.id) this.editor.activePageId = pages[index]?.id || pages[index - 1]?.id || null;
     }
+    this.markDirty(action === "up" || action === "down" ? "page order" : "pages");
     this.render();
   }
 
@@ -697,6 +699,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       return;
     }
     page.widgets.push(this.widgetTemplate(type));
+    this.markDirty(`${pageId} slots`);
     // A component is not finished when it is chosen — it still needs its
     // entity. Land on its form rather than on the page's.
     this.editor.adding = null;
@@ -709,7 +712,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.syncPageDraftFromDom();
     const page = this.editor?.draftPages.find((item) => item.id === pageId);
     if (!page?.widgets?.[index]) return;
-    if (action === "delete") page.widgets.splice(index, 1);
+    if (action === "delete") { page.widgets.splice(index, 1); this.markDirty(`${pageId} slots`); }
     this.render();
   }
 
@@ -720,7 +723,23 @@ class NSPanelCompanionPanel extends HTMLElement {
     if (!widgets?.[from] || !widgets?.[to]) return;
     const [widget] = widgets.splice(from, 1);
     widgets.splice(to, 0, widget);
+    this.markDirty(`${pageId} slots`);
     this.render();
+  }
+
+  /**
+   * Record a change the save bar cannot see.
+   *
+   * The bar counts `input` events with a name, which covers the settings
+   * forms and nothing else: reordering pages, adding or removing one, and
+   * every edit inside a slot all changed the draft silently, so the bar said
+   * "No unsaved changes" over a page of them and Revert had nothing to undo.
+   * The key is what changed, so ticking one box twice is still one change.
+   */
+  markDirty(key) {
+    if (!this.editor) return;
+    this.editor.dirty = this.editor.dirty || new Set();
+    this.editor.dirty.add(key);
   }
 
   moveDraftPage(from, to) {
@@ -729,6 +748,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     const pages = this.editor.draftPages;
     const [page] = pages.splice(from, 1);
     pages.splice(to, 0, page);
+    this.markDirty("page order");
     this.render();
   }
 
@@ -1283,9 +1303,27 @@ class NSPanelCompanionPanel extends HTMLElement {
     });
     this.shadowRoot.querySelector("#save-workspace")?.addEventListener("click", () => this.saveWorkspace());
     this.shadowRoot.querySelector("#revert-workspace")?.addEventListener("click", () => {
-      // Every field is redrawn from what the server last gave us, so throwing
-      // the DOM away is the revert.
-      if (this.editor) this.editor.dirty = new Set();
+      // Redrawing the DOM reverts the settings forms, which are read from the
+      // stored layout every time. It does not revert the pages: those live in
+      // a draft this session has been mutating, so throwing the DOM away kept
+      // every reorder and every slot edit and only reset the counter.
+      if (this.editor) {
+        this.editor.draftPages = structuredClone(this.editor.layout?.pages || []);
+        this.editor.draftThemeMode = this.editor.hasPublishedLayout
+          ? (this.editor.layout.theme_mode || "light") : "inherit";
+        // The page that was open may not exist any more.
+        if (!this.editor.draftPages.some((page) => page.id === this.editor.activePageId)) {
+          this.editor.activePageId = null;
+        }
+        this.editor.selectedWidgetIndex = null;
+        this.editor.adding = null;
+        // The remembered form values are what a save from the page editor
+        // publishes when the settings forms are not on screen. Leaving them
+        // here would let a reverted change come back at the next save.
+        this.editor.formValues = null;
+        this.editor.panelName = null;
+        this.editor.dirty = new Set();
+      }
       this.render();
     });
     // What "unsaved" means here is "touched", not "differs": a field typed
@@ -1294,10 +1332,12 @@ class NSPanelCompanionPanel extends HTMLElement {
     if (this.editor) {
       const workspace = this.shadowRoot.querySelector("nav.tabs")?.parentNode;
       workspace?.addEventListener("input", (event) => {
-        const field = event.target?.name || event.target?.id;
+        const target = event.target;
+        const field = target?.dataset?.widgetField
+          ? `${target.dataset.pageId}.${target.dataset.widgetIndex}.${target.dataset.widgetField}`
+          : target?.name || target?.id;
         if (!field || !this.editor) return;
-        this.editor.dirty = this.editor.dirty || new Set();
-        this.editor.dirty.add(field);
+        this.markDirty(field);
         const state = this.shadowRoot.querySelector("#save-state");
         if (state) {
           const count = this.editor.dirty.size;
