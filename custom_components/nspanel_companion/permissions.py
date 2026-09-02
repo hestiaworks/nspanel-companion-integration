@@ -13,6 +13,9 @@ SERVICES = {
     "fan": {"toggle", "turn_on", "turn_off", "set_percentage"},
     "cover": {"open_cover", "close_cover", "stop_cover", "set_cover_position"},
     "script": {"turn_on", "turn_off"},
+    # Running one is all a panel may do: no enabling, disabling or editing.
+    "scene": {"turn_on"},
+    "automation": {"trigger"},
 }
 
 

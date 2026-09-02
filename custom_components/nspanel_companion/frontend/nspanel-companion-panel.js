@@ -48,6 +48,7 @@ const DEFAULT_LAYOUT = (revision) => ({
 
 const CONTROL_ICONS = [
   ["auto", "Auto", "◇", "all"],
+  ["scene", "Scene", "✳", "actions"], ["script", "Script", "▤", "actions"], ["automation", "Automation", "ϟ", "actions"],
   ["light", "Light", "✦", "lighting"], ["ceiling-light", "Ceiling light", "◓", "lighting"], ["floor-lamp", "Floor lamp", "♧", "lighting"],
   ["table-lamp", "Table lamp", "♧", "lighting"], ["wall-light", "Wall light", "◖", "lighting"], ["led-strip", "LED strip", "⋯", "lighting"],
   ["spotlight", "Spotlight", "◒", "lighting"], ["chandelier", "Chandelier", "✣", "lighting"], ["pendant-light", "Pendant light", "◉", "lighting"],
@@ -649,6 +650,10 @@ class NSPanelCompanionPanel extends HTMLElement {
   static fullScreenTypes = ["thermostat", "weather", "camera", "history", "intercom"];
 
   widgetTemplate(type) {
+    // Both make an entity_button — the panel has one kind of tile. They
+    // differ in what a tile for something you *run* should start as: no
+    // timer, no schedule, and the whole card acting on a tap.
+    if (type === "runnable") return { type: "entity_button", icon: "auto", show_timer: false, show_schedule: false, card_tap: true };
     if (type === "weather") return { type, forecast_days: 5, show_hourly: true };
     if (type === "entity_button") return { type, icon: "auto", show_timer: true, show_schedule: true, timer_presets: [5, 15, 30, 60], card_tap: false, show_fan_speed: false };
     if (type === "camera") return { type, incoming_audio: false, show_intercom: false };
@@ -668,8 +673,8 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.syncPageDraftFromDom();
     const page = this.editor?.draftPages.find((item) => item.id === pageId);
     if (!page || !type || page.widgets.length >= 12) return;
-    if (type === "entity_button" && page.widgets.length >= 4) {
-      this.error = "A controls page supports at most four controls.";
+    if (!NSPanelCompanionPanel.fullScreenTypes.includes(type) && page.widgets.length >= 4) {
+      this.error = "A page shows at most four tiles.";
       this.render();
       return;
     }
@@ -1365,6 +1370,15 @@ class NSPanelCompanionPanel extends HTMLElement {
         hidden.value = option.dataset.entityOption;
         input.value = option.dataset.entityLabel;
         results.hidden = true;
+        // Which options a slot has depends on what it points at — a fan's
+        // speed control, a scene's lack of a timer. Choosing the entity is
+        // the moment that becomes known, so the form is drawn again rather
+        // than left describing the entity that was there before.
+        if (hidden?.dataset.widgetField === "entity_id") {
+          this.syncPageDraftFromDom();
+          this.render();
+          return;
+        }
         this.refreshPagePreview();
       }));
       input.addEventListener("keydown", (event) => { if (event.key === "Escape" && results) results.hidden = true; });
@@ -1658,7 +1672,10 @@ class NSPanelCompanionPanel extends HTMLElement {
   }
 
   widgetName(widget) {
-    if (widget.type === "entity_button") return "Home control";
+    if (widget.type === "entity_button") {
+      const domain = String(widget.entity_id || "").split(".")[0];
+      return { scene: "Scene", script: "Script", automation: "Automation" }[domain] || "Home control";
+    }
     if (widget.type === "sensor") return "Sensor";
     if (widget.type === "history") return "History";
     if (widget.type === "intercom") return "Intercom";
@@ -1671,7 +1688,7 @@ class NSPanelCompanionPanel extends HTMLElement {
   iconPicker(page, widget, index, field) {
     const selected = widget.icon || "auto";
     const selectedName = CONTROL_ICONS.find(([id]) => id === selected)?.[1] || "Auto";
-    const categories = [["all", "All"], ["lighting", "Lights"], ["air", "Air"], ["power", "Power"], ["covers", "Covers"], ["climate", "Climate"], ["security", "Security"], ["appliances", "Appliances"], ["cleaning", "Cleaning"], ["water", "Water"], ["media", "Media"], ["rooms", "Rooms"]];
+    const categories = [["all", "All"], ["lighting", "Lights"], ["air", "Air"], ["power", "Power"], ["covers", "Covers"], ["climate", "Climate"], ["security", "Security"], ["actions", "Actions"], ["appliances", "Appliances"], ["cleaning", "Cleaning"], ["water", "Water"], ["media", "Media"], ["rooms", "Rooms"]];
     return `<details class="icon-picker" data-icon-category="all"><summary>Icon <b>${escapeHtml(selectedName)}</b></summary><input class="icon-search" data-icon-search="${escapeHtml(page.id)}-${index}" type="search" placeholder="Search icons…" aria-label="Search icons"><div class="icon-categories">${categories.map(([id, name]) => `<button type="button" data-icon-category-button="${id}" class="${id === "all" ? "active" : ""}">${name}</button>`).join("")}</div><div class="icon-grid" data-icon-grid="${escapeHtml(page.id)}-${index}">${CONTROL_ICONS.map(([id, name, glyph, category]) => `<label title="${escapeHtml(name)}" data-icon-name="${escapeHtml(`${name} ${id}`.toLowerCase())}" data-icon-category-option="${escapeHtml(category)}"><input type="radio" name="icon-${escapeHtml(page.id)}-${index}" value="${escapeHtml(id)}" ${field("icon")} ${selected === id ? "checked" : ""}><span>${glyph}</span><small>${escapeHtml(name)}</small></label>`).join("")}</div></details>`;
   }
 
@@ -1703,7 +1720,11 @@ class NSPanelCompanionPanel extends HTMLElement {
     const pickerKey = `${page.id}-${index}`;
     if (widget.type === "thermostat") configuration = `<label>Climate entity${this.entityPicker(["climate"], entity, "Search thermostats…", field, pickerKey)}</label><small>Heat, cool, auto, dry, and dual set points follow the capabilities reported by this entity.</small>${this.modeChoices(widget, entity, "fan_modes", "Fan speeds", field)}${this.modeChoices(widget, entity, "swing_modes", "Swing positions", field)}`;
     if (widget.type === "weather") configuration = `<div class="widget-fields"><label>Weather entity${this.entityPicker(["weather"], entity, "Search weather entities…", field, pickerKey)}</label><label>Daily forecast<select ${field("forecast_days")}><option value="1" ${Number(widget.forecast_days ?? 5) === 1 ? "selected" : ""}>1 day</option><option value="3" ${Number(widget.forecast_days ?? 5) === 3 ? "selected" : ""}>3 days</option><option value="5" ${Number(widget.forecast_days ?? 5) === 5 ? "selected" : ""}>5 days</option></select></label></div><label class="check"><input type="checkbox" ${field("show_hourly")} ${widget.show_hourly !== false ? "checked" : ""}> Show next-hours forecast</label>`;
-    if (widget.type === "entity_button") configuration = `<label>Control entity${this.entityPicker(["light", "fan", "switch", "input_boolean", "cover"], entity, "Search lights, fans, switches, and covers…", field, pickerKey)}</label><small>The panel automatically uses the correct native control for this entity's capabilities.</small>${this.iconPicker(page, widget, index, field)}<div class="control-checks inline-checks"><label class="check"><input type="checkbox" ${field("show_timer")} ${widget.show_timer !== false ? "checked" : ""}> Show timer</label><label class="check"><input type="checkbox" ${field("show_schedule")} ${widget.show_schedule !== false ? "checked" : ""}> Show schedule</label><label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label>${entity.startsWith("fan.") ? `<label class="check"><input type="checkbox" ${field("show_fan_speed")} ${widget.show_fan_speed === true ? "checked" : ""}> Show fan speed control</label>` : ""}</div><label>Timer presets in minutes<input ${field("timer_presets")} value="${escapeHtml((widget.timer_presets || [5, 15, 30, 60]).join(", "))}" placeholder="5, 15, 30, 60"><small>Up to four touch-friendly choices.</small></label>${entity.startsWith("cover.") ? `<div class="widget-fields"><label>Gradual open script (optional)${this.entityPicker(["script"], widget.gradual_open_script || widget.gradual_cover_script || null, "Search script entities…", field, `${pickerKey}-gradual-open`, "gradual_open_script")}</label><label>Gradual close script (optional)${this.entityPicker(["script"], widget.gradual_close_script || null, "Search script entities…", field, `${pickerKey}-gradual-close`, "gradual_close_script")}</label></div><small>Each configured script adds its matching action to curtain controls and schedules.</small>` : ""}`;
+    // A scene, script, or automation has nothing to hold at a level and no
+    // state worth timing out: it is a button. Offering it a timer and a
+    // schedule offered actions the panel would call meaningless services for.
+    const runnable = ["scene.", "script.", "automation."].some((prefix) => entity.startsWith(prefix));
+    if (widget.type === "entity_button") configuration = `<label>Control entity${this.entityPicker(["light", "fan", "switch", "input_boolean", "cover", "scene", "script", "automation"], entity, "Search lights, switches, covers, scenes…", field, pickerKey)}</label><small>${runnable ? "Tapping this tile runs it: a scene is activated, a script or automation is run once." : "The panel automatically uses the correct native control for this entity's capabilities."}</small>${this.iconPicker(page, widget, index, field)}<div class="control-checks inline-checks">${runnable ? "" : `<label class="check"><input type="checkbox" ${field("show_timer")} ${widget.show_timer !== false ? "checked" : ""}> Show timer</label><label class="check"><input type="checkbox" ${field("show_schedule")} ${widget.show_schedule !== false ? "checked" : ""}> Show schedule</label><label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label>`}${entity.startsWith("fan.") ? `<label class="check"><input type="checkbox" ${field("show_fan_speed")} ${widget.show_fan_speed === true ? "checked" : ""}> Show fan speed control</label>` : ""}</div>${runnable ? "" : `<label>Timer presets in minutes<input ${field("timer_presets")} value="${escapeHtml((widget.timer_presets || [5, 15, 30, 60]).join(", "))}" placeholder="5, 15, 30, 60"><small>Up to four touch-friendly choices.</small></label>`}${entity.startsWith("cover.") ? `<div class="widget-fields"><label>Gradual open script (optional)${this.entityPicker(["script"], widget.gradual_open_script || widget.gradual_cover_script || null, "Search script entities…", field, `${pickerKey}-gradual-open`, "gradual_open_script")}</label><label>Gradual close script (optional)${this.entityPicker(["script"], widget.gradual_close_script || null, "Search script entities…", field, `${pickerKey}-gradual-close`, "gradual_close_script")}</label></div><small>Each configured script adds its matching action to curtain controls and schedules.</small>` : ""}`;
     if (widget.type === "sensor") configuration = `<label>Sensor entity${this.entityPicker(["sensor", "binary_sensor"], entity, "Search sensors…", field, pickerKey)}</label>`;
     if (widget.type === "intercom") configuration = this.editor?.layout?.intercom?.enabled
       ? `<small>Lists your other panels. Nothing to configure &mdash; the panel decides who it can call from who else is connected.</small>`
@@ -1796,7 +1817,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       const entity = widget.entity_id ? escapeHtml(widget.entity_id) : "";
       const flags = widgetFlags(widget);
       return `<div class="slot ${selected ? "selected" : ""}" data-select-widget="${index}" data-slot-drop="${index}" tabindex="0">
-        <span class="kind">${full ? "FULL SCREEN" : `SLOT ${index + 1}`} · ${escapeHtml(widget.type.toUpperCase())}</span>
+        <span class="kind">${full ? "FULL SCREEN" : `SLOT ${index + 1}`} · ${escapeHtml(this.widgetName(widget).toUpperCase())}</span>
         <span class="name truncate">${escapeHtml(widget.label || this.widgetName(widget))}</span>
         ${entity ? `<span class="id truncate">${entity}</span>` : ""}
         ${flags ? `<span class="flags">${escapeHtml(flags)}</span>` : ""}
@@ -1809,7 +1830,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     const adders = Array.from({ length: empties }, () =>
       `<div class="slot empty ${undecided ? "choose" : ""}" data-add-slot="${escapeHtml(page.id)}" tabindex="0" role="button">
         <span class="plus">＋</span><span class="kind">${undecided ? "CHOOSE WHAT THIS PAGE SHOWS" : "ADD COMPONENT"}</span>
-        ${undecided ? `<span class="name">One full-screen component, or up to four controls</span>` : ""}</div>`).join("");
+        ${undecided ? `<span class="name">One full-screen component, or up to four tiles</span>` : ""}</div>`).join("");
     return `<div class="stage">
       <div class="stage-head"><span class="t-control">${escapeHtml(page.title || "Untitled")}</span>
         <span class="id">page id · ${escapeHtml(page.id)}</span><span class="grow"></span>
@@ -1820,7 +1841,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         <div class="slots ${full || undecided ? "full" : ""}">${slots}${adders}</div>
       </div>
       <div class="stage-foot"><span class="grow">${undecided
-          ? "Thermostat, weather, camera, history and intercom take the whole screen. Only home controls and sensors share a page, four at most."
+          ? "Thermostat, weather, camera, history and intercom take the whole screen. Controls, scenes and sensors share a page, four tiles at most."
           : full ? "One slot, no add affordance. Swapping the type is the only edit the board offers."
           : `Click a slot to edit it · slot ${widgets.length} of ${capacity}`}</span>
         <button type="button" class="small" data-page-action="duplicate" data-page-index="${pageIndex}" ${this.editor.draftPages.length >= 8 ? "disabled" : ""}>Duplicate page</button>
@@ -1828,31 +1849,45 @@ class NSPanelCompanionPanel extends HTMLElement {
     </div>`;
   }
 
-  /** The component types, with why each one is or is not available here. */
+  /**
+   * The component types, in the two groups that actually differ.
+   *
+   * Sensor sat beside thermostat and weather as though choosing it made a
+   * sensor page. It does not: the panel puts a sensor in the same grid as
+   * the controls, and always has. Listing it under the tiles says so.
+   */
   addComponentPanel(page) {
     const widgets = page.widgets || [];
     const full = NSPanelCompanionPanel.fullScreenTypes;
     const occupied = widgets.length > 0;
     const hasFull = widgets.some((widget) => full.includes(widget.type));
-    const types = [
-      ["entity_button", "Home control", "Light, fan, switch, cover — four to a page", hasFull || widgets.length >= 4],
-      ["sensor", "Sensor", "One reading, shares the page with controls", hasFull],
-      ["thermostat", "Thermostat", "Full screen — needs an empty page", occupied],
-      ["weather", "Weather", "Full screen — needs an empty page", occupied],
-      ["camera", "Camera", "Full screen — needs Scrypted", occupied],
-      ["history", "History", "Full screen — one entity over time", occupied],
+    // The panel gives a grid page four cells, whatever is in them.
+    const grid = hasFull || widgets.length >= 4;
+    const groups = [
+      ["Tiles · up to four on one page", [
+        ["entity_button", "Home control", "Light, fan, switch, cover", grid],
+        ["runnable", "Scene or script", "Also automations — tap to run", grid],
+        ["sensor", "Sensor", "One reading, no controls", grid],
+      ]],
+      ["Full screen · one to a page", [
+        ["thermostat", "Thermostat", "Heating and cooling", occupied],
+        ["weather", "Weather", "Forecast and conditions", occupied],
+        ["camera", "Camera", "Needs Scrypted", occupied],
+        ["history", "History", "One entity over time", occupied],
+        ...(this.editor?.layout?.intercom?.enabled
+          ? [["intercom", "Intercom", "Call another panel", occupied]] : []),
+      ]],
     ];
-    if (this.editor?.layout?.intercom?.enabled) {
-      types.push(["intercom", "Intercom", "Full screen — call another panel", occupied]);
-    }
     return `<div class="inspector">
       <div class="inspector-head"><span class="t-label accent">${occupied ? `Add to slot ${widgets.length + 1}` : "What this page shows"}</span>
         <span class="grow"></span>
         <button type="button" class="quiet small" id="cancel-add" title="Close">✕</button></div>
       <div class="inspector-body" style="padding:0">
-        <div class="add-grid">${types.map(([type, name, note, disabled]) => `
-          <button type="button" data-add-type="${type}" data-add-page="${escapeHtml(page.id)}" ${disabled ? "disabled" : ""}>
-            <b>${name}</b><small>${note}</small></button>`).join("")}</div>
+        ${groups.map(([heading, types]) => `
+          <div class="add-heading t-label">${heading}</div>
+          <div class="add-grid">${types.map(([type, name, note, disabled]) => `
+            <button type="button" data-add-type="${type}" data-add-page="${escapeHtml(page.id)}" ${disabled ? "disabled" : ""}>
+              <b>${name}</b><small>${note}</small></button>`).join("")}</div>`).join("")}
       </div>
     </div>`;
   }
@@ -2588,6 +2623,10 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .add-grid > button small { font:400 12px/1.45 var(--font); color:var(--muted); }
 .add-grid > button:hover { background:var(--surface-raised); }
 .add-grid > button:disabled { opacity:.45; background:transparent; }
+/* Which group a type is in is the whole point of the picker, so it is a rule
+   with a name on it rather than a gap. */
+.add-heading { padding:12px var(--s4) 10px; border-bottom:1px solid var(--line); color:var(--muted); }
+.add-grid + .add-heading { border-top:1px solid var(--line); margin-top:-1px; }
 
 
 /* 13 ── DIALOGS ───────────────────────────────────────────── */

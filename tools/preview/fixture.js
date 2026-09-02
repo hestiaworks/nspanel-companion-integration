@@ -52,6 +52,10 @@ export const STATES = {
   "light.desk_lamp": { entity_id: "light.desk_lamp", state: "off", attributes: { friendly_name: "Desk lamp" } },
   "cover.living_blinds": { entity_id: "cover.living_blinds", state: "open", attributes: { friendly_name: "Living room blinds" } },
   "switch.desk_monitor": { entity_id: "switch.desk_monitor", state: "off", attributes: { friendly_name: "Desk monitor" } },
+  // A scene reports the time it was last applied as its state, not on/off.
+  "scene.evening": { entity_id: "scene.evening", state: "2026-09-02T18:04:11.000+00:00", attributes: { friendly_name: "Evening" } },
+  "script.goodnight": { entity_id: "script.goodnight", state: "off", attributes: { friendly_name: "Goodnight" } },
+  "automation.dusk_lights": { entity_id: "automation.dusk_lights", state: "on", attributes: { friendly_name: "Dusk lights" } },
   "sensor.bedroom_temp": { entity_id: "sensor.bedroom_temp", state: "21.0", attributes: { friendly_name: "Bedroom temp", unit_of_measurement: "°C", device_class: "temperature" } },
   "binary_sensor.front_door_visitor": { entity_id: "binary_sensor.front_door_visitor", state: "off", attributes: { friendly_name: "Front Door Visitor" } },
   "binary_sensor.front_door_person": { entity_id: "binary_sensor.front_door_person", state: "off", attributes: { friendly_name: "Front Door Person" } },

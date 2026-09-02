@@ -22,6 +22,22 @@ class PanelPermissionsTest(unittest.TestCase):
         self.assertEqual({"climate.room", "weather.home", "light.one", "fan.one", "cover.one", "switch.one", "sensor.room"}, allowed)
         self.assertNotIn("sensor.secret", allowed)
 
+    def test_allows_running_a_scene_script_or_automation(self):
+        """A tile for something you run has to be able to run it.
+
+        The panel calls scene.turn_on, script.turn_on and automation.trigger.
+        None of those were on the whitelist, so a scene tile passed the app's
+        own checks and was refused here, silently — the panel does not read
+        the result of a service call.
+        """
+        entities = {"scene.evening", "script.goodnight", "automation.dusk"}
+        self.assertTrue(module.service_allowed("scene.evening", "scene", "turn_on", entities))
+        self.assertTrue(module.service_allowed("script.goodnight", "script", "turn_on", entities))
+        self.assertTrue(module.service_allowed("automation.dusk", "automation", "trigger", entities))
+        # Running one is the whole of what a panel may do with it.
+        self.assertFalse(module.service_allowed("automation.dusk", "automation", "turn_off", entities))
+        self.assertFalse(module.service_allowed("scene.evening", "scene", "delete", entities))
+
     def test_rejects_wrong_entity_domain_and_service(self):
         entities = {"light.room"}
         self.assertTrue(module.service_allowed("light.room", "light", "turn_on", entities))

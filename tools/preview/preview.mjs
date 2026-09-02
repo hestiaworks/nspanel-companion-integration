@@ -118,7 +118,10 @@ try {
     execFile(CHROME, [
       "--headless=new", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
       "--force-device-scale-factor=1",
-      `--virtual-time-budget=${settle}`,
+      // Virtual time is the whole budget, not the wait after it: every click
+      // in the script spends 400ms of it, and a budget that ran out mid
+      // sequence photographed a half-driven page and said nothing.
+      `--virtual-time-budget=${settle + clicks.length * 450 + (select === null ? 0 : 700)}`,
       `--screenshot=${out}`, `--window-size=${width},${height}`,
       `http://127.0.0.1:${port}/harness.html`,
     ], (error) => (error ? fail(error) : done()));
