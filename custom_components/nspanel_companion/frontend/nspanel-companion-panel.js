@@ -122,6 +122,7 @@ class NSPanelCompanionPanel extends HTMLElement {
   set panel(value) { this._panel = value; }
 
   connectedCallback() {
+    installFonts();
     window.addEventListener("hashchange", this.routeHandler);
     window.addEventListener("popstate", this.routeHandler);
     document.addEventListener("pointerdown", this.outsidePickerHandler, true);
@@ -1506,11 +1507,29 @@ class NSPanelCompanionPanel extends HTMLElement {
     </article>`;
   }
 
+  /**
+   * On a phone the three columns are three stacked sections, so the form for
+   * the slot you just tapped is a screen further down and tapping appears to
+   * do nothing. Bring it into view — but only when the selection changed, or
+   * every re-render would yank the page around under someone reading it.
+   */
+  revealInspector() {
+    const key = `${this.editor?.activePageId}|${this.editor?.selectedWidgetIndex}|${this.editor?.adding}`;
+    const changed = key !== this._inspectorKey;
+    this._inspectorKey = key;
+    const selected = this.editor?.selectedWidgetIndex != null || this.editor?.adding;
+    if (!changed || !selected) return;
+    if (!window.matchMedia("(max-width:600px)").matches) return;
+    this.shadowRoot.querySelector(".editor > .inspector")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   render() {
     if (!this.shadowRoot) return;
     if (this.editor) {
       this.shadowRoot.innerHTML = `<style>${STYLES}</style>${this.editorDialog()}${this.token ? this.tokenDialog() : ""}${this.panelFinderOpen ? this.panelFinderDialog() : ""}`;
       this.bind();
+      this.revealInspector();
       return;
     }
     if (this.view === "integrations") {
@@ -2202,6 +2221,49 @@ const clockLabel = (iso) => {
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
 const formatDate = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
+
+/**
+ * The typefaces, in the document rather than in the shadow root.
+ *
+ * A shadow tree can *use* a font family but cannot declare one: Chromium
+ * ignores @font-face inside a shadow root, so the same rules that work in
+ * the design's stylesheet load nothing here. They go in the document head
+ * once, where the browser will honour them, and the shadow styles then ask
+ * for Barlow by name like any other page would.
+ *
+ * Served from this integration, not from Google Fonts: plenty of Home
+ * Assistant installs cannot reach the internet, and the ones that can should
+ * not be telling a third party who is looking at their admin page.
+ */
+const FONT_FACES = `/* Barlow and Roboto Mono are what the design and the panel are drawn in.
+   They are served from this integration rather than from Google Fonts:
+   plenty of Home Assistant installs cannot reach the internet, and the one
+   that can should not be telling a third party who is looking at its admin
+   page. Without these the page fell back to system-ui, which is why it did
+   not look like the design. */
+@font-face { font-family:Barlow; font-style:normal; font-weight:400; font-display:swap;
+  src:url('/nspanel_companion/frontend/fonts/barlow-400.woff2') format('woff2'); }
+@font-face { font-family:Barlow; font-style:normal; font-weight:500; font-display:swap;
+  src:url('/nspanel_companion/frontend/fonts/barlow-500.woff2') format('woff2'); }
+@font-face { font-family:Barlow; font-style:normal; font-weight:600; font-display:swap;
+  src:url('/nspanel_companion/frontend/fonts/barlow-600.woff2') format('woff2'); }
+@font-face { font-family:Barlow; font-style:normal; font-weight:700; font-display:swap;
+  src:url('/nspanel_companion/frontend/fonts/barlow-700.woff2') format('woff2'); }
+/* One variable file covers the two weights the mono role uses. Latin only:
+   it sets identifiers, which are ASCII. */
+@font-face { font-family:'Roboto Mono'; font-style:normal; font-weight:400 500; font-display:swap;
+  src:url('/nspanel_companion/frontend/fonts/roboto-mono-latin.woff2') format('woff2');
+  unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }`;
+
+const installFonts = () => {
+  const id = "nspanel-companion-fonts";
+  if (document.getElementById(id)) return;
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = FONT_FACES;
+  document.head.appendChild(style);
+};
 
 const STYLES = `
 /* ============================================================
@@ -3003,11 +3065,14 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 }
 @media (max-width:980px) {
   :host { --page-inset:18px; }
-  .editor { grid-template-columns:1fr; min-height:0; }
+  /* minmax(0,…), not 1fr: a bare 1fr track is minmax(auto,1fr), whose floor
+     is the content's min-content width, so one long row pushed the whole
+     column past the viewport and the page scrolled sideways. */
+  .editor { grid-template-columns:minmax(0,1fr); min-height:0; }
   .editor > .rail { border-right:0; border-bottom:1px solid var(--line); }
   .editor > .inspector { border-left:0; border-top:1px solid var(--line); }
-  .workspace-grid { grid-template-columns:1fr; }
-  .panel-grid { grid-template-columns:1fr; }
+  .workspace-grid { grid-template-columns:minmax(0,1fr); }
+  .panel-grid { grid-template-columns:minmax(0,1fr); }
   .integration-strip { flex-direction:column; height:auto; }
   .integration-strip > div + div { border-left:0; border-top:1px solid var(--line); }
   .integration-strip .go { flex:none; justify-content:flex-start; padding-top:12px; padding-bottom:12px; }
@@ -3019,6 +3084,78 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
   .add-grid { grid-template-columns:1fr; }
   .add-grid > button { border-right:0; }
 }
+
+/* Phones. The design does not cover this width, so the rule followed here is
+   the one the rest of the sheet follows: nothing is scaled down, nothing is
+   hidden that carries information, and a row that cannot fit becomes two
+   rows rather than a horizontal scroll. The one exception is the tab bar,
+   which scrolls because tabs in two rows stop reading as one control. */
+@media (max-width:600px) {
+  :host { --page-inset:14px; --pane-inset:16px; }
+
+  /* The bar keeps its identity on one line and puts the actions under it.
+     .spacer is already between the two halves, so it becomes the break. */
+  .app-bar { height:auto; flex-wrap:wrap; padding:10px var(--page-inset); row-gap:10px; }
+  .app-bar .spacer { flex:0 0 100%; height:0; }
+  .app-bar .save-state { flex:1; }
+  .app-bar button { flex:none; }
+  .crumbs .here { font-size:14px; }
+
+  .tabs { padding:0 8px; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tabs button { flex:none; padding:0 12px; }
+
+  /* Home */
+  .page-head { flex-wrap:wrap; align-items:flex-start; gap:var(--s3); }
+  .page-head .spacer { display:none; }
+  .integration-strip { height:auto; }
+  .integration-strip > div { padding:12px var(--s4); }
+
+  /* Page editor: the rail is a list, the board is as wide as the phone. */
+  .editor > .stage { padding:16px var(--page-inset); }
+  .board, .stage .stage-head, .stage .stage-foot { width:100%; }
+  .stage .stage-head, .stage .stage-foot { flex-wrap:wrap; gap:6px; }
+  /* The size caption is the one decoration here; the board is the subject. */
+  .stage .stage-head .t-label { display:none; }
+  .stage .stage-foot .grow { flex:0 0 100%; }
+  /* Two page actions, half the row each, rather than one of them 3px over. */
+  .stage .stage-foot button { flex:1; }
+  .board { padding:12px; gap:10px; }
+  .board .slots { gap:8px; }
+  .slot { padding:10px; }
+  .rail .rail-foot { display:none; }
+
+  /* Dialogs sit against the edges rather than in a box inside a box. */
+  .scrim { padding:0; place-items:stretch; }
+  .dialog { width:100%; max-height:100vh; height:100%; border:0; border-top:2px solid var(--accent); }
+
+  /* A settings row is a label beside a 220px control. At this width the
+     label wraps to three lines to make room for it, so the control takes a
+     line of its own instead — the label is the thing being read. */
+  .settings-card > label, .workspace-panel fieldset > label {
+    grid-template-columns:minmax(0,1fr); gap:8px; }
+  .settings-card > label > :is(input,select,textarea),
+  .workspace-panel fieldset > label > :is(input,select,textarea),
+  .settings-card > label > .select-wrap, .workspace-panel fieldset > label > .select-wrap,
+  .settings-card > label > .sound-row, .workspace-panel fieldset > label > .sound-row {
+    grid-column:1; grid-row:auto; width:100%; }
+  /* A tick box is not a field: it stays on the line with what it ticks. */
+  .settings-card > label.check, .workspace-panel fieldset > label.check { display:flex; }
+
+  /* Three actions in a row need 460px. Let them wrap and share what there
+     is, rather than pushing the first one off the left of the screen. */
+  .workspace-panel .actions { flex-wrap:wrap; }
+  .workspace-panel .actions > button { flex:1 1 150px; }
+  /* A service headline is its name, what it is, and its state: at this width
+     the state goes under the name instead of off the edge. */
+  .service .head, .service .detail { flex-wrap:wrap; row-gap:6px; }
+  .service .head .spacer { flex-basis:100%; height:0; }
+
+  .icon-grid { grid-template-columns:repeat(3,1fr); }
+  .icon-grid label:nth-child(4n) { border-right:1px solid var(--line); }
+  .icon-grid label:nth-child(3n) { border-right:0; }
+}
+
 :host([narrow]) main { padding:18px; }
 `;
 
