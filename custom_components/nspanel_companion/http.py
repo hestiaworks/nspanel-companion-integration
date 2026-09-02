@@ -313,6 +313,10 @@ class PanelWebSocketView(HomeAssistantView):
             holds, so all of them are told, not just the one whose socket
             moved. Each gets its own roster because the list excludes its
             own entry.
+
+            A call starting or ending changes the same list: both ends go
+            busy and come back. Without this a third panel kept showing them
+            free, and tapping one got a refusal it had no way to anticipate.
             """
             known = intercom_known()
             for viewer in roster_audience(known, departed):
@@ -341,7 +345,19 @@ class PanelWebSocketView(HomeAssistantView):
                         callee = str(data.get("panel_id", ""))
                         call_id = book.open(panel_id, callee) if enabled_for(layout) else None
                         if call_id is None:
-                            await socket.send_json({"type": "intercom_busy"})
+                            callee_name = next(
+                                (r.get("name") for r in registry.list_public()
+                                 if r["panel_id"] == callee),
+                                callee,
+                            )
+                            await socket.send_json({
+                                "type": "intercom_busy",
+                                "panel_id": callee,
+                                "name": callee_name or callee,
+                            })
+                            # The caller's own list said this panel was free,
+                            # so it is out of date: replace it.
+                            await send_roster_to_all()
                             continue
                         caller_name = next(
                             (r.get("name") for r in registry.list_public()
@@ -358,6 +374,9 @@ class PanelWebSocketView(HomeAssistantView):
                             "ring_volume": callee_intercom.get("ring_volume", 70),
                         })
                         await socket.send_json({"type": "intercom_calling", "call_id": call_id})
+                        # Both ends are busy from this moment: everyone else
+                        # is told before they can dial into a refusal.
+                        await send_roster_to_all()
                         continue
                     if data.get("type") in {"intercom_answer", "intercom_decline"}:
                         call_id = str(data.get("call_id", ""))
@@ -367,6 +386,7 @@ class PanelWebSocketView(HomeAssistantView):
                         if data["type"] == "intercom_decline":
                             book.close(call_id)
                             await tell(other, {"type": "intercom_end", "call_id": call_id})
+                            await send_roster_to_all()
                         else:
                             await tell(other, {"type": "intercom_answer", "call_id": call_id})
                         continue
@@ -388,6 +408,9 @@ class PanelWebSocketView(HomeAssistantView):
                         for other in book.close(call_id):
                             if other != panel_id:
                                 await tell(other, {"type": "intercom_end", "call_id": call_id})
+                        # Both are free again, and the panels that were shown
+                        # them as busy have no other way to learn it.
+                        await send_roster_to_all()
                         continue
                     if data.get("type") == "history_request":
                         await send_history(

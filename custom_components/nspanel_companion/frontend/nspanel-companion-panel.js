@@ -31,6 +31,9 @@ const DEFAULT_LAYOUT = (revision) => ({
   default_page_return_seconds: 60,
   weather_cache_max_age_minutes: 360,
   keep_screen_on: false,
+  screen_schedule_enabled: false,
+  screen_on_from: "07:00",
+  screen_on_to: "22:00",
   show_clock: true,
   show_mic_indicator: true,
   mic_indicator_linger_seconds: 15,
@@ -408,6 +411,9 @@ class NSPanelCompanionPanel extends HTMLElement {
     const generalSettings = {
       default_page_return_seconds: Number(values.get("return_seconds") ?? 60),
       keep_screen_on: values.get("keep_screen_on") === "on",
+      screen_schedule_enabled: values.get("screen_schedule_enabled") === "on",
+      screen_on_from: String(values.get("screen_on_from") || "07:00"),
+      screen_on_to: String(values.get("screen_on_to") || "22:00"),
       show_clock: values.get("show_clock") === "on",
       show_mic_indicator: values.get("show_mic_indicator") === "on",
       mic_indicator_linger_seconds: Number(values.get("mic_indicator_linger_seconds") ?? 15),
@@ -821,6 +827,9 @@ class NSPanelCompanionPanel extends HTMLElement {
       default_page_return_seconds: Number(this.editor.layout.default_page_return_seconds ?? 60),
       weather_cache_max_age_minutes: 360,
       keep_screen_on: Boolean(this.editor.layout.keep_screen_on),
+      screen_schedule_enabled: Boolean(this.editor.layout.screen_schedule_enabled),
+      screen_on_from: String(this.editor.layout.screen_on_from || "07:00"),
+      screen_on_to: String(this.editor.layout.screen_on_to || "22:00"),
       show_clock: this.editor.layout.show_clock !== false,
       show_mic_indicator: this.editor.layout.show_mic_indicator !== false,
       mic_indicator_linger_seconds: Number(this.editor.layout.mic_indicator_linger_seconds ?? 15),
@@ -2057,7 +2066,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         <form id="panel-general" class="settings-card">
           <label>Panel name<input name="panel_name" maxlength="64" required value="${escapeHtml(panel.name)}" placeholder="Living room"></label>
           <label>Panel theme<select name="theme_mode"><option value="inherit" ${this.editor.draftThemeMode === "inherit" ? "selected" : ""}>Auto · inherit Home Assistant</option><option value="light" ${this.editor.draftThemeMode === "light" ? "selected" : ""}>Light</option><option value="dark" ${this.editor.draftThemeMode === "dark" ? "selected" : ""}>Dark</option></select><small>Auto resolves the active Home Assistant light/dark appearance when the dashboard is published. Explicit Light or Dark stays fixed.</small></label>
-          <fieldset class="dashboard-behavior" aria-label="Dashboard behavior"><div class="band-label">Dashboard behavior</div><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>When disabled, the panel follows its Android display timeout.</small><label class="check"><input name="wake_on_approach" type="checkbox" ${layout.wake_on_approach ? "checked" : ""}> Wake the display when someone approaches</label><small>Uses the panel's proximity sensor. Ignored while the display is set to stay on.</small><label>Wake sensitivity<select name="wake_sensitivity"><option value="high" ${String(layout.wake_sensitivity || "medium") === "high" ? "selected" : ""}>High &middot; from across the room</option><option value="medium" ${String(layout.wake_sensitivity || "medium") === "medium" ? "selected" : ""}>Medium</option><option value="low" ${String(layout.wake_sensitivity || "medium") === "low" ? "selected" : ""}>Low &middot; only up close</option></select><small>The sensor measures reflected light, so a lighter wall or a shelf in front of the panel reads closer. Lower the sensitivity if it wakes on its own.</small></label><label class="check"><input name="show_clock" type="checkbox" ${layout.show_clock !== false ? "checked" : ""}> Show Home Assistant time</label><label class="check"><input name="show_mic_indicator" type="checkbox" ${layout.show_mic_indicator !== false ? "checked" : ""}> Show microphone privacy indicator</label><label>Keep microphone indicator green after use<input name="mic_indicator_linger_seconds" type="number" min="0" max="60" value="${Number(layout.mic_indicator_linger_seconds ?? 15)}"><small>Seconds; use 0 to show green only during active capture.</small></label></fieldset>
+          <fieldset class="dashboard-behavior" aria-label="Dashboard behavior"><div class="band-label">Dashboard behavior</div><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>When disabled, the panel follows its Android display timeout.</small><label class="check"><input name="screen_schedule_enabled" type="checkbox" ${layout.screen_schedule_enabled ? "checked" : ""}> Only during these hours</label><div class="hours"><label>From<input name="screen_on_from" type="time" value="${escapeHtml(String(layout.screen_on_from || "07:00"))}"></label><label>To<input name="screen_on_to" type="time" value="${escapeHtml(String(layout.screen_on_to || "22:00"))}"></label></div><small>Outside these hours the panel lets its display sleep as usual, and waking on approach works again. A window may cross midnight. A call always lights the screen, whatever the hour.</small><label class="check"><input name="wake_on_approach" type="checkbox" ${layout.wake_on_approach ? "checked" : ""}> Wake the display when someone approaches</label><small>Uses the panel's proximity sensor. Ignored while the display is set to stay on.</small><label>Wake sensitivity<select name="wake_sensitivity"><option value="high" ${String(layout.wake_sensitivity || "medium") === "high" ? "selected" : ""}>High &middot; from across the room</option><option value="medium" ${String(layout.wake_sensitivity || "medium") === "medium" ? "selected" : ""}>Medium</option><option value="low" ${String(layout.wake_sensitivity || "medium") === "low" ? "selected" : ""}>Low &middot; only up close</option></select><small>The sensor measures reflected light, so a lighter wall or a shelf in front of the panel reads closer. Lower the sensitivity if it wakes on its own.</small></label><label class="check"><input name="show_clock" type="checkbox" ${layout.show_clock !== false ? "checked" : ""}> Show Home Assistant time</label><label class="check"><input name="show_mic_indicator" type="checkbox" ${layout.show_mic_indicator !== false ? "checked" : ""}> Show microphone privacy indicator</label><label>Keep microphone indicator green after use<input name="mic_indicator_linger_seconds" type="number" min="0" max="60" value="${Number(layout.mic_indicator_linger_seconds ?? 15)}"><small>Seconds; use 0 to show green only during active capture.</small></label></fieldset>
           <fieldset class="system-ui" aria-label="Android system UI"><div class="band-label">Android system UI</div><label>Navigation bar<select name="nav_bar_mode"><option value="listener" ${String(layout.nav_bar_mode || "listener") === "listener" ? "selected" : ""}>Hide, and re-hide when Android shows it</option><option value="immersive" ${String(layout.nav_bar_mode || "listener") === "immersive" ? "selected" : ""}>Suppress entirely (recommended)</option><option value="visible" ${String(layout.nav_bar_mode || "listener") === "visible" ? "selected" : ""}>Leave visible</option></select><small>Re-hiding lets the bar appear for a moment whenever a long press or an edge swipe summons it. Suppressing it stops Android summoning it at all.</small></label><label class="check"><input name="hide_accessibility_button" type="checkbox" ${layout.hide_accessibility_button ? "checked" : ""}> Hide the panel's floating back button</label><small>Suppressing the navigation bar and hiding the back button both need a system permission the updater add-on grants when it installs the app. If the panel has not been updated since this setting appeared, update it once and these will take effect.</small></fieldset>
           
           <label>Stable device ID<input value="${escapeHtml(panel.device_id)}" readonly></label>
@@ -2754,6 +2763,12 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .slot.empty .plus { font-size:20px; line-height:1; }
 /* The undecided page: one prompt, not a grid of them. */
 .slot.empty.choose { border-color:var(--muted); }
+/* The two ends of the screen-on window, as one row of the settings band. */
+.hours { display:flex; gap:var(--s4); align-items:end; }
+.hours > label { display:flex; flex-direction:column; gap:6px; font:400 14px/1.4 var(--font); }
+.hours input { width:140px; }
+@media (max-width:600px) { .hours > label { flex:1; } .hours input { width:100%; } }
+
 /* .slot .name is bottom-anchored for a filled slot; here it is a caption. */
 .slot.empty.choose .name { color:var(--muted); font:400 12px/1.3 var(--mono); margin-top:0; }
 .slot.dragging { opacity:.45; }

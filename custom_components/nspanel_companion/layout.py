@@ -17,6 +17,20 @@ RING_SOUNDS = {"off", "chime_1", "chime_2", "chime_3"}
 RETIRED_SOUNDS = {"chime", "bell", "ping"}
 
 
+def _clock(value: Any, what: str) -> str:
+    """A time of day as "HH:MM", or a refusal.
+
+    Accepts a single-digit hour because a text field invites one, and writes
+    it back padded: the panel parses one shape and a layout it cannot read
+    would leave the screen behaving as though nothing had been set.
+    """
+    text = str(value).strip()
+    match = re.fullmatch(r"(\d{1,2}):([0-5]\d)", text)
+    if not match or int(match.group(1)) > 23:
+        raise ValueError(f"The {what} must be a time of day, for example 07:00")
+    return f"{int(match.group(1)):02d}:{match.group(2)}"
+
+
 def _sound(value: str, field: str) -> str:
     name = str(value).strip() or "off"
     if name in RETIRED_SOUNDS:
@@ -223,6 +237,13 @@ def validate_layout(value: Any) -> dict[str, Any]:
     normalized["default_page_return_seconds"] = return_seconds
     normalized["weather_cache_max_age_minutes"] = cache_minutes
     normalized["keep_screen_on"] = bool(value.get("keep_screen_on", False))
+    # The hours the screen is held on, when it is held on at all. A window
+    # around keep_screen_on rather than a second setting: outside it the
+    # panel stops holding the screen and its display timeout takes over,
+    # which is also what makes waking on approach work again at night.
+    normalized["screen_schedule_enabled"] = bool(value.get("screen_schedule_enabled", False))
+    normalized["screen_on_from"] = _clock(value.get("screen_on_from", "07:00"), "screen-on start")
+    normalized["screen_on_to"] = _clock(value.get("screen_on_to", "22:00"), "screen-on end")
     normalized["show_clock"] = bool(value.get("show_clock", True))
     normalized["show_mic_indicator"] = bool(value.get("show_mic_indicator", True))
     mic_linger_seconds = int(value.get("mic_indicator_linger_seconds", 15))

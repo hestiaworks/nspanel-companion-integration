@@ -80,6 +80,45 @@ class LayoutValidationTest(unittest.TestCase):
                 "pages": [{"id": "room", "widgets": []}],
             })
 
+    def test_normalizes_the_screen_on_schedule(self):
+        layout = {
+            "schema_version": 1, "revision": "screen-hours",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+            "keep_screen_on": True,
+            "screen_schedule_enabled": True,
+            "screen_on_from": "7:00",
+            "screen_on_to": "22:30",
+        }
+        normalized = layout_module.validate_layout(layout)
+        # Written back in the one shape the panel parses.
+        self.assertTrue(normalized["screen_schedule_enabled"])
+        self.assertEqual("07:00", normalized["screen_on_from"])
+        self.assertEqual("22:30", normalized["screen_on_to"])
+
+    def test_a_layout_without_a_schedule_gets_the_default_window(self):
+        layout = {
+            "schema_version": 1, "revision": "no-hours",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+        }
+        normalized = layout_module.validate_layout(layout)
+        self.assertFalse(normalized["screen_schedule_enabled"])
+        self.assertEqual("07:00", normalized["screen_on_from"])
+        self.assertEqual("22:00", normalized["screen_on_to"])
+
+    def test_rejects_hours_that_are_not_times(self):
+        layout = {
+            "schema_version": 1, "revision": "bad-hours",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+            "screen_schedule_enabled": True,
+            "screen_on_from": "half past seven",
+            "screen_on_to": "22:00",
+        }
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(layout)
+        layout["screen_on_from"] = "25:00"
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(layout)
+
     def test_normalizes_keep_screen_on(self):
         value = layout_module.validate_layout({
             "schema_version": 1,
