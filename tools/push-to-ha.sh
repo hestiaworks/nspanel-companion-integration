@@ -16,7 +16,7 @@ source_dir="$here/custom_components/nspanel_companion"
 
 if [ ! -d "$share" ]; then
   echo "Not mounted: $share" >&2
-  echo "In Finder: Go → Connect to Server → smb://192.168.0.76 → the 'config' share." >&2
+  echo "In Finder: Go → Connect to Server → smb://<your Home Assistant> → the 'config' share." >&2
   echo "Mounted somewhere else? Set NSPANEL_HA_CONFIG to that path." >&2
   exit 2
 fi
