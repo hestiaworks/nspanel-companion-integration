@@ -13,6 +13,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import get_url
 
 from .const import DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DOMAIN
+from .layout import doorbell_is_playable
 from .pairing import PairingManager
 from .panel_discovery import PanelDiscovery
 from .registry import PanelRegistry
@@ -288,31 +289,17 @@ async def ws_restart_panel(hass, connection, msg) -> None:
 })
 async def ws_list_scrypted_doorbells(hass, connection, msg) -> None:
     try:
-        doorbells = await _registry(hass).async_scrypted_doorbells(msg["bridge_id"])
+        # The picker draws names; it has no use for a stream URL, and
+        # asking for one would mint a session per camera per open.
+        doorbells = await _registry(hass).async_scrypted_doorbells(
+            msg["bridge_id"], include_video=False,
+        )
         connection.send_result(msg["id"], [
             {key: value for key, value in item.items() if key != "talkback_key"}
             for item in doorbells
         ])
     except ValueError as err:
         connection.send_error(msg["id"], "scrypted_unavailable", str(err))
-
-
-@websocket_api.require_admin
-@websocket_api.async_response
-@websocket_api.websocket_command({
-    vol.Required("type"): "nspanel_companion/scrypted/assign",
-    vol.Required("panel_id"): str,
-    vol.Required("bridge_id"): str,
-    vol.Required("doorbell_id"): str,
-})
-async def ws_assign_scrypted_doorbell(hass, connection, msg) -> None:
-    try:
-        panel = await _registry(hass).async_assign_scrypted_doorbell(
-            msg["panel_id"], msg["bridge_id"], msg["doorbell_id"]
-        )
-        connection.send_result(msg["id"], panel)
-    except ValueError as err:
-        connection.send_error(msg["id"], "scrypted_assignment_failed", str(err))
 
 
 @websocket_api.require_admin
@@ -422,8 +409,11 @@ async def ws_test_doorbell(hass, connection, msg) -> None:
         panel_id = msg["panel_id"]
         layout = _registry(hass).layout(panel_id) or {}
         doorbell = layout.get("doorbell") or {}
-        if not doorbell.get("stream_base_url"):
-            raise ValueError("Configure and publish a doorbell media URL first")
+        if not doorbell_is_playable(doorbell):
+            raise ValueError(
+                "Select a Scrypted camera or enter a media URL, then publish, "
+                "before testing the doorbell",
+            )
         hass.bus.async_fire("nspanel_doorbell", {
             "panel_id": panel_id,
             "stream_base_url": doorbell.get("stream_base_url", ""),
@@ -515,7 +505,6 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_pair_scrypted)
     websocket_api.async_register_command(hass, ws_unpair_scrypted)
     websocket_api.async_register_command(hass, ws_list_scrypted_doorbells)
-    websocket_api.async_register_command(hass, ws_assign_scrypted_doorbell)
     websocket_api.async_register_command(hass, ws_scan_panels)
     websocket_api.async_register_command(hass, ws_set_panel_discovery)
     websocket_api.async_register_command(hass, ws_connect_discovered_panel)

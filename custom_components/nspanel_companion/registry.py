@@ -15,7 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
 from .const import DATA_PANEL_SOCKETS, DOMAIN, STORAGE_KEY, STORAGE_VERSION
-from .layout import validate_layout
+from .layout import validate_layout, without_example_stream_url
 
 DEVICE_ID = re.compile(r"^[A-Za-z0-9._:-]{4,128}$")
 # The add-on discloses its pairing code to this host only, so these are the only
@@ -52,6 +52,34 @@ class PanelRegistry:
         updater = data.get("updater")
         self._updater = updater if isinstance(updater, dict) and updater.get("token") else None
         self._settings.update(data.get("settings", {}))
+        if self._drop_example_stream_urls():
+            await self._save()
+
+    def _drop_example_stream_urls(self) -> bool:
+        """Clear the Media URL example out of the layouts already stored.
+
+        The field shipped its example as the input's value, so it was saved
+        as though someone had typed it. It is a documentation address that
+        can never answer, and while it is there the code that fills in the
+        real Scrypted URL — which only writes into an empty field — leaves
+        it alone. Panels are given the stored layout directly, so it has to
+        go from the data rather than only from the next save.
+        """
+        changed = False
+        for record in self._panels.values():
+            layout = record.get("layout") or {}
+            blocks = [layout.get("doorbell") or {}]
+            blocks += [
+                widget for page in layout.get("pages") or []
+                for widget in page.get("widgets") or []
+                if widget.get("type") == "camera"
+            ]
+            for block in blocks:
+                if not without_example_stream_url(str(block.get("stream_base_url", ""))):
+                    if block.get("stream_base_url"):
+                        block["stream_base_url"] = ""
+                        changed = True
+        return changed
 
     @property
     def passive_panel_discovery(self) -> bool:
@@ -192,12 +220,22 @@ class PanelRegistry:
         await self._save()
         return self._public_bridge(record)
 
-    async def async_scrypted_doorbells(self, bridge_id: str) -> list[dict[str, Any]]:
+    async def async_scrypted_doorbells(
+        self, bridge_id: str, *, include_video: bool = True
+    ) -> list[dict[str, Any]]:
+        """The cameras a bridge offers.
+
+        Asking for the stream URLs is not free: Scrypted mints a session per
+        camera per request, and the session outlives the request whether or
+        not anything plays it. A caller that only needs names — the camera
+        picker — passes include_video=False and costs nothing. An older
+        bridge ignores the parameter and answers as it always did.
+        """
         bridge = self._require_bridge(bridge_id)
         session = async_get_clientsession(self._hass)
         try:
             async with session.get(
-                f"{bridge['base_url']}/api/doorbells",
+                f"{bridge['base_url']}/api/doorbells" + ("" if include_video else "?video=0"),
                 headers={"Authorization": f"Bearer {bridge['token']}"},
                 timeout=20,
             ) as response:
@@ -266,31 +304,6 @@ class PanelRegistry:
                 cleared_panels.append(panel_id)
         await self._save()
         return {"unpaired": True, "cleared_panels": cleared_panels, "warning": warning}
-
-    async def async_assign_scrypted_doorbell(
-        self, panel_id: str, bridge_id: str, doorbell_id: str
-    ) -> dict[str, Any]:
-        doorbells = await self.async_scrypted_doorbells(bridge_id)
-        selected = next((item for item in doorbells if item.get("id") == doorbell_id), None)
-        if not selected:
-            raise ValueError("Unknown Scrypted doorbell")
-        record = self._require(panel_id)
-        layout = dict(record.get("layout") or {})
-        doorbell = dict(layout.get("doorbell") or {})
-        doorbell.update({
-            "scrypted_bridge_id": bridge_id,
-            "scrypted_doorbell_id": doorbell_id,
-            "talkback_url": selected.get("talkback_url", ""),
-            "talkback_key": selected.get("talkback_key", ""),
-        })
-        # Scrypted's standard VideoCamera API may return a short-lived session
-        # URL. Preserve an explicitly configured rebroadcast/prebuffer URL;
-        # only use the discovered URL when the layout has no media URL yet.
-        if not doorbell.get("stream_base_url"):
-            doorbell["stream_base_url"] = selected.get("video_url", "")
-        layout["doorbell"] = doorbell
-        layout["revision"] = f"scrypted-{int(datetime.now(UTC).timestamp() * 1000)}"
-        return await self.async_set_layout(panel_id, layout)
 
     def list_public(self) -> list[dict[str, Any]]:
         return [self._public(item) for item in sorted(self._panels.values(), key=lambda item: item["name"].lower())]
@@ -445,6 +458,31 @@ class PanelRegistry:
         doorbell.update(layout.get("doorbell") or {})
         pages = [dict(page) for page in layout.get("pages", [])]
         cache: dict[str, list[dict[str, Any]]] = {}
+
+        async def device(bridge_id: str, device_id: str) -> dict[str, Any]:
+            """One camera as the bridge describes it, asked for once.
+
+            Without the stream URL: resolving one mints a session per camera
+            and nothing stored here uses it. What is wanted are the talkback
+            credentials, which do not expire.
+            """
+            if bridge_id not in cache:
+                cache[bridge_id] = await self.async_scrypted_doorbells(bridge_id, include_video=False)
+            found = next((item for item in cache[bridge_id] if item.get("id") == device_id), None)
+            if not found:
+                raise ValueError("Unknown Scrypted camera")
+            return found
+
+        # A doorbell that names a Scrypted device takes its credentials from
+        # that device — one rule, applied where the layout is written, rather
+        # than a second command that overwrote the layout just published.
+        doorbell_bridge = str(doorbell.get("scrypted_bridge_id", ""))
+        doorbell_device = str(doorbell.get("scrypted_doorbell_id", ""))
+        if doorbell_bridge and doorbell_device:
+            selected = await device(doorbell_bridge, doorbell_device)
+            doorbell["talkback_url"] = selected.get("talkback_url", "")
+            doorbell["talkback_key"] = selected.get("talkback_key", "")
+            hydrated["doorbell"] = doorbell
         for page in pages:
             widgets = [dict(widget) for widget in page.get("widgets", [])]
             for widget in widgets:
@@ -454,19 +492,20 @@ class PanelRegistry:
                 camera_id = str(widget.get("scrypted_camera_id", ""))
                 if not bridge_id or not camera_id:
                     raise ValueError("Select a Scrypted camera")
-                if bridge_id not in cache:
-                    cache[bridge_id] = await self.async_scrypted_doorbells(bridge_id)
-                selected = next((item for item in cache[bridge_id] if item.get("id") == camera_id), None)
-                if not selected:
-                    raise ValueError("Unknown Scrypted camera")
+                selected = await device(bridge_id, camera_id)
                 same_configured_doorbell = (
                     bridge_id == str(doorbell.get("scrypted_bridge_id", ""))
                     and camera_id == str(doorbell.get("scrypted_doorbell_id", ""))
                     and bool(doorbell.get("stream_base_url"))
                 )
+                # Only a stable URL is worth storing. Scrypted's own is
+                # session scoped — its plugin says the port dies with the
+                # session — so keeping one leaves the panel a fallback that
+                # is dead within minutes, and it spends the player's connect
+                # timeout finding that out. With nothing here it resolves
+                # live, which is what it does first in any case.
                 widget["stream_base_url"] = (
-                    doorbell.get("stream_base_url", "")
-                    if same_configured_doorbell else selected.get("video_url", "")
+                    doorbell.get("stream_base_url", "") if same_configured_doorbell else ""
                 )
                 widget["stream_name"] = (
                     doorbell.get("stream_name", "")

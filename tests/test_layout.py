@@ -119,6 +119,56 @@ class LayoutValidationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             layout_module.validate_layout(layout)
 
+    def test_the_admins_example_media_url_is_not_a_configured_one(self):
+        """The Media URL field shipped its example as the input's value.
+
+        So every save stored a documentation address as the camera's
+        fallback, and the code that fills in the real Scrypted URL — which
+        only writes when the field is empty — read it as a deliberate
+        choice and never ran. The address cannot answer, so a panel that
+        falls back to it waits out the player's connect timeout and then
+        gives up.
+        """
+        layout = {
+            "schema_version": 1, "revision": "example-url",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+            "doorbell": {"stream_base_url": layout_module.EXAMPLE_STREAM_URL},
+        }
+        normalized = layout_module.validate_layout(layout)
+        self.assertEqual("", normalized["doorbell"]["stream_base_url"])
+
+    def test_a_real_media_url_is_left_alone(self):
+        layout = {
+            "schema_version": 1, "revision": "real-url",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+            "doorbell": {"stream_base_url": "rtsp://192.0.2.10:8554/doorbell"},
+        }
+        normalized = layout_module.validate_layout(layout)
+        self.assertEqual("rtsp://192.0.2.10:8554/doorbell", normalized["doorbell"]["stream_base_url"])
+
+    def test_a_doorbell_is_playable_from_a_url_or_from_scrypted(self):
+        """What counts as a doorbell that can show a picture.
+
+        It used to mean "has a media URL", because one was always stored.
+        Now that Scrypted's expiring URL is no longer kept, a doorbell
+        configured through Scrypted has no URL at all — the panel asks the
+        bridge for one when it rings. Judging it by the URL alone called a
+        working doorbell unconfigured and refused to test it.
+        """
+        scrypted = {
+            "stream_base_url": "",
+            "talkback_url": "http://192.0.2.9:11081/talk/44",
+            "talkback_key": "key-44",
+        }
+        self.assertTrue(layout_module.doorbell_is_playable(scrypted))
+        manual = {"stream_base_url": "rtsp://192.0.2.10:8554/door", "talkback_url": "", "talkback_key": ""}
+        self.assertTrue(layout_module.doorbell_is_playable(manual))
+        # Half a bridge cannot resolve anything, and neither can nothing.
+        self.assertFalse(layout_module.doorbell_is_playable(
+            {"stream_base_url": "", "talkback_url": "http://192.0.2.9:11081/talk/44", "talkback_key": ""},
+        ))
+        self.assertFalse(layout_module.doorbell_is_playable({}))
+
     def test_normalizes_keep_screen_on(self):
         value = layout_module.validate_layout({
             "schema_version": 1,

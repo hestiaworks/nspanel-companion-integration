@@ -864,20 +864,26 @@ class NSPanelCompanionPanel extends HTMLElement {
       ...this.shadowRoot.querySelectorAll("#save-workspace, #revert-workspace")];
     saveButtons.forEach((button) => { button.disabled = true; });
     try {
-      await this.call({ type: "nspanel_companion/layout/set", panel_id: this.editor.panel.panel_id, layout });
-      if (scryptedDoorbell) {
-        await this.call({
-          type: "nspanel_companion/scrypted/assign",
-          panel_id: this.editor.panel.panel_id,
-          bridge_id: scryptedBridgeId,
-          doorbell_id: scryptedDoorbellId,
-        });
-      }
+      // One write. Publishing used to be followed by a second command that
+      // re-fetched the Scrypted device and overwrote the talkback fields of
+      // the layout just saved — a second revision for the panel to sync, and
+      // a silent last-writer-wins between the form and the device. The
+      // layout itself now says which device a doorbell uses, and the server
+      // fills the credentials in as it saves.
+      await this.call({
+        type: "nspanel_companion/layout/set", panel_id: this.editor.panel.panel_id, layout,
+      });
       // Publishing used to close the workspace and reload everything, which
       // is why the panel list flashed up before the route put the workspace
       // back. The save bar leaves you where you are (§7), so only the data
       // behind the screen is refreshed.
-      this.editor.layout = layout;
+      // Read back what was stored rather than assuming the form was it. The
+      // server fills a Scrypted doorbell's talkback credentials in as it
+      // saves, so showing the submitted layout left those boxes displaying
+      // whatever had been typed while storage held something else.
+      this.editor.layout = await this.call({
+        type: "nspanel_companion/layout/get", panel_id: this.editor.panel.panel_id,
+      }) || layout;
       this.editor.dirty = new Set();
       await this.refreshPanelList();
     } catch (error) {
@@ -1310,6 +1316,26 @@ class NSPanelCompanionPanel extends HTMLElement {
         if (event.key === "Enter" || event.key === " ") { event.preventDefault(); go(); }
       });
     });
+    // Which fields the doorbell's video source owns. Toggled in place
+    // rather than by re-rendering: a re-render redraws the tab from the
+    // stored layout and would drop everything else typed but not yet saved.
+    const source = this.shadowRoot.querySelector('[name="scrypted_doorbell"]');
+    if (source) {
+      const applySource = () => {
+        const scrypted = Boolean(source.value);
+        this.shadowRoot.querySelectorAll("[data-doorbell-source]").forEach((box) => {
+          box.dataset.doorbellSource = scrypted ? "scrypted" : "manual";
+        });
+        // Readable, not editable: Scrypted overwrites these on publish, and
+        // a box that accepts what you type and discards it is a lie.
+        ["talkback_url", "talkback_key"].forEach((name) => {
+          const field = this.shadowRoot.querySelector(`[name="${name}"]`);
+          if (field) field.readOnly = scrypted;
+        });
+      };
+      applySource();
+      source.addEventListener("change", applySource);
+    }
     this.shadowRoot.querySelector("#save-workspace")?.addEventListener("click", () => this.saveWorkspace());
     this.shadowRoot.querySelector("#revert-workspace")?.addEventListener("click", () => {
       // Redrawing the DOM reverts the settings forms, which are read from the
@@ -2112,12 +2138,17 @@ class NSPanelCompanionPanel extends HTMLElement {
           <fieldset aria-label="Doorbell configuration"><div class="band-label">Doorbell configuration</div>
             <label class="check"><input name="doorbell_enabled" type="checkbox" ${doorbell.enabled ? "checked" : ""}> Open this panel on visitor event</label>
             <label>Visitor/button entity<select name="doorbell_trigger">${this.entityOptions(["binary_sensor"], doorbell.trigger_entity_id || "", "Select trigger entity")}</select></label>
-            ${(this.scrypted.paired || []).length ? `<label>Scrypted doorbell<select name="scrypted_doorbell"><option value="">Manual configuration</option>${this.scryptedDoorbells.map((item) => { const value = `${item.bridge_id}|${item.id}`; return `<option value="${escapeHtml(value)}" ${value === selectedScrypted ? "selected" : ""}>${escapeHtml(item.name)}${item.intercom ? " · intercom" : ""}</option>`; }).join("")}</select><small>Selecting a device fills video and talkback credentials securely when you publish.</small></label>` : ""}
-            <details><summary>Advanced manual media settings</summary>
-            <label>Media URL<input name="stream_base_url" type="text" inputmode="url" value="${escapeHtml(doorbell.stream_base_url || "rtsp://192.0.2.76:46211/0123456789abcdef")}" placeholder="rtsp://scrypted-host:port/stream"><small>Use the complete Scrypted rebroadcast RTSP URL, including the rtsp:// scheme.</small></label>
-            <label>Stream name<input name="stream_name" pattern="[A-Za-z0-9_-]+" value="${escapeHtml(doorbell.stream_name || "doorbell_sub")}"><small>Used only when Media URL points to go2rtc rather than a complete RTSP URL.</small></label>
-            <label>Talkback URL<input name="talkback_url" type="text" inputmode="url" value="${escapeHtml(doorbell.talkback_url || "")}" placeholder="http://scrypted-host:11081/talk/device-id"><small>Copy the streaming endpoint from the NSPanel Talkback Scrypted extension. Do not use this as the Media URL.</small></label>
-            <label>Talkback access key<input name="talkback_key" type="text" value="${escapeHtml(doorbell.talkback_key || "")}" autocomplete="off"><small>Copy the access key from the Scrypted extension.</small></label>
+            ${(this.scrypted.paired || []).length ? `<label>Scrypted doorbell<select name="scrypted_doorbell"><option value="">Manual configuration</option>${this.scryptedDoorbells.map((item) => { const value = `${item.bridge_id}|${item.id}`; return `<option value="${escapeHtml(value)}" ${value === selectedScrypted ? "selected" : ""}>${escapeHtml(item.name)}${item.intercom ? " · intercom" : ""}</option>`; }).join("")}</select><small>The panel asks Scrypted where the stream is each time it opens the page, and its talkback credentials are filled in when you publish. Choose Manual configuration to enter an address yourself.</small></label>` : ""}
+            <details data-doorbell-source ${selectedScrypted ? "" : "open"}>
+              <summary>Video source and talkback</summary>
+              <div class="source-note" data-source-note="scrypted">
+                <b>Scrypted supplies these.</b> The panel asks the bridge where the stream is each time it opens the page,
+                and the talkback endpoint below comes from the selected device. Choose <b>Manual configuration</b> above to enter them yourself.
+              </div>
+              <label data-source-only="manual">Media URL<input name="stream_base_url" type="text" inputmode="url" value="${escapeHtml(doorbell.stream_base_url || "")}" placeholder="rtsp://scrypted-host:port/stream"><small>The complete RTSP URL, or a go2rtc base with the stream name below.</small></label>
+              <label data-source-only="manual">Stream name<input name="stream_name" pattern="[A-Za-z0-9_-]+" value="${escapeHtml(doorbell.stream_name || "doorbell_sub")}"><small>Used only when Media URL points to go2rtc rather than a complete RTSP URL.</small></label>
+              <label>Talkback URL<input name="talkback_url" type="text" inputmode="url" value="${escapeHtml(doorbell.talkback_url || "")}" placeholder="http://scrypted-host:11081/talk/device-id"><small data-source-only="manual">Copy the streaming endpoint from the NSPanel Talkback Scrypted extension. Do not use this as the Media URL.</small></label>
+              <label>Talkback access key<input name="talkback_key" type="text" value="${escapeHtml(doorbell.talkback_key || "")}" autocomplete="off"><small data-source-only="manual">Copy the access key from the Scrypted extension.</small></label>
             </details>
             <label>Close after<input name="auto_close_seconds" type="number" min="10" max="300" value="${Number(doorbell.auto_close_ms || 60000) / 1000}"><small>10–300 seconds.</small></label>
             <label class="check"><input name="talk_extend_enabled" type="checkbox" ${doorbell.talk_extend_enabled !== false ? "checked" : ""}> Extend timeout after hold-to-talk</label>
@@ -2979,6 +3010,38 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .workspace-panel details[open] > summary::before, .inspector details[open] > summary::before { content:'▾'; }
 .workspace-panel details > summary:focus-visible, .inspector details > summary:focus-visible {
   outline:2px solid var(--accent); outline-offset:-2px; }
+/* The doorbell's video source is a mode, not a set of optional extras: the
+   fields Scrypted owns are shown as facts, and the ones only manual
+   configuration uses are not shown at all until it is chosen. */
+[data-doorbell-source="scrypted"] [data-source-only="manual"] { display:none; }
+[data-doorbell-source="manual"] [data-source-note="scrypted"] { display:none; }
+.workspace-panel details > .source-note {
+  padding:12px var(--s4); font:400 13px/1.5 var(--font); color:var(--muted); }
+.workspace-panel details > .source-note + label { border-top:1px solid var(--line); }
+.workspace-panel details > .source-note b { color:var(--ink); font-weight:600; }
+.workspace-panel details input[readonly] { color:var(--muted); border-style:dashed; }
+
+/* A disclosure inside a settings band is a band of its own: flush with the
+   rows above it, its summary a row, and what it hides rows like any other.
+   Only the summary was ever styled, so the fields inside fell back to
+   browser defaults — each hint ran inline into the next field's name, and
+   the whole thing read as a form dropped into the page. */
+.workspace-panel fieldset > details, .settings-card > details {
+  padding:0; border:0; border-top:1px solid var(--line); }
+/* A row you can act on, at the weight the other row labels use: as body
+   text it read as a caption and went unnoticed. */
+.workspace-panel fieldset > details > summary {
+  padding:0 var(--s4); font:600 14px/1.4 var(--font); }
+.workspace-panel fieldset > details > summary:hover { background:var(--surface-raised); }
+.workspace-panel fieldset > details[open] > summary { border-bottom:1px solid var(--line); }
+.workspace-panel details > label {
+  display:grid; grid-template-columns:minmax(0,1fr) 220px; align-items:center;
+  gap:4px var(--s4); padding:14px var(--s4); font:400 14px/1.4 var(--font); }
+.workspace-panel details > label + label { border-top:1px solid var(--line); }
+.workspace-panel details > label > :is(input,select,textarea) { grid-column:2; grid-row:1; }
+.workspace-panel details > label > small {
+  grid-column:1 / -1; font:400 12px/1.5 var(--font); color:var(--muted); }
+
 .mode-choices summary b, .icon-picker summary b { margin-left:auto; float:none; }
 .mode-choices .inline-checks { padding:10px var(--s3); gap:0; }
 .mode-choices .inline-checks > label.check { min-height:var(--row); }
@@ -3202,6 +3265,9 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
   .workspace-panel fieldset > label > :is(input,select,textarea),
   .settings-card > label > .select-wrap, .workspace-panel fieldset > label > .select-wrap,
   .settings-card > label > .sound-row, .workspace-panel fieldset > label > .sound-row {
+    grid-column:1; grid-row:auto; width:100%; }
+  .workspace-panel details > label { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .workspace-panel details > label > :is(input,select,textarea) {
     grid-column:1; grid-row:auto; width:100%; }
   /* A tick box is not a field: it stays on the line with what it ticks. */
   .settings-card > label.check, .workspace-panel fieldset > label.check { display:flex; }

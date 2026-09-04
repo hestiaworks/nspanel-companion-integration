@@ -43,6 +43,36 @@ SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sens
 # The spans a history page offers. How many bars each becomes is history.py's
 # business; this only decides what a layout may ask for.
 HISTORY_RANGES = {"6h", "24h", "7d", "30d"}
+#: The Media URL field's example, which shipped as the input's value rather
+#: than its placeholder, so every save stored it as a real configuration. It
+#: is a documentation address (RFC 5737) and can never answer, and while it
+#: sits in the field the code that fills in the real Scrypted URL — which
+#: only writes into an empty field — reads it as a deliberate choice and
+#: stays out of the way. Recognised here so it is cleared wherever it turns
+#: up rather than only in newly saved layouts.
+EXAMPLE_STREAM_URL = "rtsp://192.0.2.76:46211/0123456789abcdef"
+
+
+def doorbell_is_playable(doorbell: dict[str, Any]) -> bool:
+    """Whether a ring on this doorbell can put a picture on the panel.
+
+    Either the layout carries a stable media URL, or it carries the bridge
+    credentials the panel uses to ask Scrypted for a current one when the
+    ring arrives. Requiring the URL alone was right only while a URL was
+    always stored — a Scrypted doorbell now keeps none, because the one
+    Scrypted mints expires long before the next visitor.
+    """
+    return bool(str(doorbell.get("stream_base_url", "")).strip()) or bool(
+        str(doorbell.get("talkback_url", "")).strip()
+        and str(doorbell.get("talkback_key", "")).strip()
+    )
+
+
+def without_example_stream_url(value: str) -> str:
+    """The stored URL, unless it is the example, in which case nothing."""
+    return "" if value.strip().rstrip("/") == EXAMPLE_STREAM_URL else value
+
+
 CONTROL_ICONS = {
     "auto", "scene", "script", "automation", "light", "ceiling-light", "floor-lamp", "wall-light", "led-strip", "spotlight",
     "fan", "ceiling-fan", "ventilation", "power", "switch", "plug", "socket", "curtains", "cover",
@@ -163,7 +193,8 @@ def validate_layout(value: Any) -> dict[str, Any]:
                 widget.pop("tap_action", None)
                 if "incoming_audio" in widget and not isinstance(widget["incoming_audio"], bool):
                     raise ValueError("incoming_audio must be a boolean")
-                stream_url = str(widget.get("stream_base_url", ""))
+                stream_url = without_example_stream_url(str(widget.get("stream_base_url", "")))
+                widget["stream_base_url"] = stream_url
                 if stream_url and not stream_url.startswith(("http://", "https://", "rtsp://", "rtsps://")):
                     raise ValueError("Camera stream URL must use HTTP, HTTPS, RTSP, or RTSPS")
     if len(set(ids)) != len(ids):
@@ -183,7 +214,9 @@ def validate_layout(value: Any) -> dict[str, Any]:
         if not isinstance(doorbell, dict):
             raise ValueError("Doorbell configuration must be an object")
         trigger_entity_id = str(doorbell.get("trigger_entity_id", "")).strip()
-        stream_base_url = str(doorbell.get("stream_base_url", "")).strip().rstrip("/")
+        stream_base_url = without_example_stream_url(
+            str(doorbell.get("stream_base_url", "")).strip().rstrip("/"),
+        )
         stream_name = str(doorbell.get("stream_name", "")).strip()
         talkback_url = str(doorbell.get("talkback_url", "")).strip().rstrip("/")
         talkback_key = str(doorbell.get("talkback_key", "")).strip()

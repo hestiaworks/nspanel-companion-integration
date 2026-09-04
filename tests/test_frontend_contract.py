@@ -39,7 +39,6 @@ class FrontendContractTest(unittest.TestCase):
             "nspanel_companion/scrypted/pair",
             "nspanel_companion/scrypted/unpair",
             "nspanel_companion/scrypted/doorbells",
-            "nspanel_companion/scrypted/assign",
             "nspanel_companion/panels/discovery/scan",
             "nspanel_companion/panels/discovery/settings",
             "nspanel_companion/panels/discovery/connect",
@@ -55,6 +54,10 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("!dialogOpen", source)
         self.assertNotIn("Publish default", source)
         self.assertNotIn("Rotate token", source)
+        # Publishing is one call. A second command that rewrote the layout it
+        # had just saved is what made the doorbell form's talkback fields
+        # accept a value and then discard it.
+        self.assertNotIn("scrypted/assign", source)
         self.assertNotIn("<dt>Layout</dt>", source)
         self.assertRegex(source, r'\["general",\s*"General"\]')
         self.assertIn('data-workspace-panel="diagnostics"', source)
@@ -119,8 +122,9 @@ class FrontendContractTest(unittest.TestCase):
 
     def test_admin_websocket_commands_use_current_ha_decorator(self):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
-        # 26 with panels/restart, which is admin-only: it stops the panel.
-        self.assertEqual(26, source.count("@websocket_api.require_admin"))
+        # 25 since scrypted/assign went: publishing a layout is one command,
+        # and the doorbell's Scrypted credentials are filled in as it saves.
+        self.assertEqual(25, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
         self.assertIn('{"nspanel-companion", "probable-nspanel"}', source)
         self.assertIn('device.get("adb_state") == "device"', source)
