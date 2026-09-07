@@ -88,6 +88,10 @@ writeFileSync(join(work, "harness.html"), `<!doctype html>
   ${opt("open", null) === null ? "" : `
   el.shadowRoot.querySelector(${JSON.stringify(opt("open", ""))})?.setAttribute("open", "");
   await new Promise((done) => setTimeout(done, 300));`}
+  ${opt("scroll", null) === null ? "" : `
+  // Sticky chrome only proves itself once the page has moved under it.
+  window.scrollTo(0, ${Number(opt("scroll", 0))});
+  await new Promise((done) => setTimeout(done, 200));`}
   await new Promise((done) => setTimeout(done, 250));
   ${!args.includes("--audit") ? "" : `
   // Which elements stick out of the viewport, innermost blamed on their

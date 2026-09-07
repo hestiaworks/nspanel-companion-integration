@@ -2638,7 +2638,11 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 
 /* 7 ── CHROME ─────────────────────────────────────────────── */
 
-.app-bar { height:var(--app-bar); display:flex; align-items:center; gap:var(--s3); padding:0 var(--page-inset); border-bottom:1px solid var(--line); }
+/* The phone's status bar is drawn over the top of the page in the Home
+   Assistant app, so the bar begins below it rather than under it. The inset
+   is zero everywhere else, which leaves this exactly as it was. */
+.app-bar { min-height:var(--app-bar); display:flex; align-items:center; gap:var(--s3);
+  padding:env(safe-area-inset-top, 0px) var(--page-inset) 0; border-bottom:1px solid var(--line); }
 .app-bar .mark { width:8px; height:8px; background:var(--accent); flex:none; }
 .app-bar .spacer, .save-bar .spacer { flex:1; }
 
@@ -2802,11 +2806,23 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .slot.empty .plus { font-size:20px; line-height:1; }
 /* The undecided page: one prompt, not a grid of them. */
 .slot.empty.choose { border-color:var(--muted); }
-/* The two ends of the screen-on window, as one row of the settings band. */
-.hours { display:flex; gap:var(--s4); align-items:end; }
-.hours > label { display:flex; flex-direction:column; gap:6px; font:400 14px/1.4 var(--font); }
-.hours input { width:140px; }
-@media (max-width:600px) { .hours > label { flex:1; } .hours input { width:100%; } }
+/* The two ends of the screen-on window, as one row of the settings band.
+
+   iOS draws a time input as a native control that lays its own padding
+   outside the width it is given, ignoring border-box — so each field came
+   out wider than its half of the row, pushed past the card, and swallowed
+   the gap between them. Dropping the native appearance makes it an ordinary
+   box again, sized like every other field here. min-width:0 lets it shrink,
+   and the 140px basis lets the pair stack rather than overflow if the card
+   is ever narrower than both of them. */
+.hours { display:flex; flex-wrap:wrap; gap:var(--s4); align-items:end; }
+.hours > label { display:flex; flex-direction:column; gap:6px; min-width:0;
+  font:400 14px/1.4 var(--font); }
+.hours input { width:140px; min-width:0; }
+.hours input[type="time"] { -webkit-appearance:none; appearance:none; }
+.hours input[type="time"]::-webkit-date-and-time-value { text-align:left; margin:0; }
+.hours input[type="time"]::-webkit-calendar-picker-indicator { margin:0; }
+@media (max-width:600px) { .hours > label { flex:1 1 140px; } .hours input { width:100%; } }
 
 /* .slot .name is bottom-anchored for a filled slot; here it is a caption. */
 .slot.empty.choose .name { color:var(--muted); font:400 12px/1.3 var(--mono); margin-top:0; }
@@ -3230,7 +3246,11 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 
   /* The bar keeps its identity on one line and puts the actions under it.
      .spacer is already between the two halves, so it becomes the break. */
-  .app-bar { height:auto; flex-wrap:wrap; padding:10px var(--page-inset); row-gap:10px; }
+  /* The inset goes on top of the padding, not instead of it: this rule wins
+     over the one that carries it at other widths, and the phone is the only
+     place there is an inset to lose. */
+  .app-bar { height:auto; flex-wrap:wrap; row-gap:10px;
+    padding:calc(10px + env(safe-area-inset-top, 0px)) var(--page-inset) 10px; }
   .app-bar .spacer { flex:0 0 100%; height:0; }
   .app-bar .save-state { flex:1; }
   .app-bar button { flex:none; }
@@ -3274,6 +3294,10 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
   .settings-card > label > .select-wrap, .workspace-panel fieldset > label > .select-wrap,
   .settings-card > label > .sound-row, .workspace-panel fieldset > label > .sound-row {
     grid-column:1; grid-row:auto; width:100%; }
+  /* The save bar stays put. On a long settings page it used to scroll away,
+     and the one thing someone needs after a change is the button that keeps
+     it. The tabs go with it: a bar with nothing under it reads as detached. */
+  .app-bar { position:sticky; top:0; z-index:6; background:var(--canvas); }
   .workspace-panel details > label { grid-template-columns:minmax(0,1fr); gap:8px; }
   .workspace-panel details > label > :is(input,select,textarea) {
     grid-column:1; grid-row:auto; width:100%; }
