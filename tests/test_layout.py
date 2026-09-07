@@ -218,6 +218,37 @@ class LayoutValidationTest(unittest.TestCase):
         self.assertTrue(offered, "could not read the admin icon list")
         self.assertEqual(set(), offered - layout_module.CONTROL_ICONS)
 
+    def test_normalizes_the_two_presentation_options(self):
+        """A curtain read the other way round, and a band kept while a light is off.
+
+        Both are about what the panel shows rather than what the entity is:
+        a Zigbee2MQTT motor inverts as a whole, so its percentage can be
+        backwards while its buttons are right, and Home Assistant drops a
+        light's brightness when it is off, leaving nothing to draw a band
+        from.
+        """
+        layout = {
+            "schema_version": 1, "revision": "presentation",
+            "pages": [{"id": "p", "widgets": [
+                {"type": "entity_button", "entity_id": "cover.curtain", "invert_position": True},
+                {"type": "entity_button", "entity_id": "light.desk", "brightness_when_off": True},
+            ]}],
+        }
+        normalized = layout_module.validate_layout(layout)
+        widgets = normalized["pages"][0]["widgets"]
+        self.assertTrue(widgets[0]["invert_position"])
+        self.assertTrue(widgets[1]["brightness_when_off"])
+
+    def test_the_presentation_options_must_be_booleans(self):
+        layout = {
+            "schema_version": 1, "revision": "presentation",
+            "pages": [{"id": "p", "widgets": [
+                {"type": "entity_button", "entity_id": "cover.curtain", "invert_position": "yes"},
+            ]}],
+        }
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(layout)
+
     def test_validates_gradual_cover_scripts(self):
         layout = {
             "schema_version": 1,

@@ -158,7 +158,14 @@ def validate_layout(value: Any) -> dict[str, Any]:
             if widget.get("type") == "entity_button":
                 if str(widget.get("icon", "auto")) not in CONTROL_ICONS:
                     raise ValueError("Invalid control icon")
-                for option in ("show_timer", "show_schedule", "card_tap", "show_fan_speed"):
+                for option in (
+                    "show_timer", "show_schedule", "card_tap", "show_fan_speed",
+                    # How the panel presents the entity, not what it is: a
+                    # motor whose percentage reads backwards, and a light
+                    # whose band should stay when Home Assistant drops its
+                    # brightness on the way off.
+                    "invert_position", "brightness_when_off",
+                ):
                     if option in widget and not isinstance(widget[option], bool):
                         raise ValueError(f"{option} must be a boolean")
                 timer_presets = widget.get("timer_presets", [5, 15, 30, 60])

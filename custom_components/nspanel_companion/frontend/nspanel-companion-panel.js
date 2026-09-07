@@ -1849,6 +1849,12 @@ class NSPanelCompanionPanel extends HTMLElement {
       <label class="check"><input type="checkbox" ${field("card_tap")} ${widget.card_tap === true ? "checked" : ""}> Use whole card as button</label>`;
     const fanSpeed = domain === "fan" ? `
       <label class="check"><input type="checkbox" ${field("show_fan_speed")} ${widget.show_fan_speed === true ? "checked" : ""}> Show fan speed control</label>` : "";
+    // Two settings about how the panel presents an entity rather than what
+    // the entity is, each offered only where it means something.
+    const invert = domain === "cover" ? `
+      <label class="check"><input type="checkbox" ${field("invert_position")} ${widget.invert_position === true ? "checked" : ""}> Read the position the other way round</label>` : "";
+    const brightnessWhenOff = domain === "light" ? `
+      <label class="check"><input type="checkbox" ${field("brightness_when_off")} ${widget.brightness_when_off === true ? "checked" : ""}> Keep the brightness bar while the light is off</label>` : "";
     const presets = runnable ? "" : `
       <label>Timer presets in minutes<input ${field("timer_presets")} value="${escapeHtml((widget.timer_presets || [5, 15, 30, 60]).join(", "))}" placeholder="5, 15, 30, 60">
         <small>Up to four touch-friendly choices.</small></label>`;
@@ -1859,7 +1865,9 @@ class NSPanelCompanionPanel extends HTMLElement {
       </div><small>Each configured script adds its matching action to curtain controls and schedules.</small>` : "";
     return `<label>Tile entity${picker}</label><small>${note}</small>
       ${this.iconPicker(page, widget, index, field)}
-      <div class="control-checks inline-checks">${checks}${fanSpeed}</div>${presets}${gradual}`;
+      <div class="control-checks inline-checks">${checks}${fanSpeed}${invert}${brightnessWhenOff}</div>
+      ${domain === "cover" ? `<small>Some motors can only be inverted as a whole, so open and close come out right while the percentage does not. This turns the percentage round on the panel: 0% is the curtain at rest.</small>` : ""}
+      ${domain === "light" ? `<small>Home Assistant reports no brightness while a light is off, so the panel offers on and off instead. Keeping the bar lets you turn the light on at a level.</small>` : ""}${presets}${gradual}`;
   }
 
   widgetEditor(page, widget, index) {
