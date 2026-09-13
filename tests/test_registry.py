@@ -41,7 +41,8 @@ if "nspanel_companion.registry" not in sys.modules:
     assert spec and spec.loader
     spec.loader.exec_module(module)
 
-PanelRegistry = sys.modules["nspanel_companion.registry"].PanelRegistry
+registry_module = sys.modules["nspanel_companion.registry"]
+PanelRegistry = registry_module.PanelRegistry
 
 
 class ExampleStreamUrlTest(unittest.IsolatedAsyncioTestCase):
@@ -210,6 +211,38 @@ class DoorbellSourceOfTruthTest(unittest.IsolatedAsyncioTestCase):
             await registry._hydrate_camera_widgets(
                 {"pages": [], "doorbell": {"scrypted_bridge_id": "b", "scrypted_doorbell_id": "99"}}, {},
             )
+
+
+class BehindReleaseTest(unittest.TestCase):
+    """Which panels are not on the published version.
+
+    Deliberately "not the same" rather than "older". Home Assistant knows
+    the version name a panel reported, and names do not sort: 1.2.2-rc.10
+    comes before 1.2.2-rc.9 as text. The installer decides what is newer,
+    from the version code it reads off the panel over ADB, and refuses a
+    downgrade; this only says which panels are not running what is
+    published, which is the question the badge is asking.
+    """
+
+    def panels(self, *versions):
+        return [
+            {"panel_id": f"panel-{index}", "name": f"Panel {index}", "app_version": version}
+            for index, version in enumerate(versions)
+        ]
+
+    def test_it_names_the_panels_that_differ(self):
+        behind = registry_module.behind_release(self.panels("1.2.2", "1.2.0", "1.2.2"), "1.2.2")
+        self.assertEqual(["panel-1"], [item["panel_id"] for item in behind])
+
+    def test_everything_up_to_date_is_nothing_to_say(self):
+        self.assertEqual([], registry_module.behind_release(self.panels("1.2.2"), "1.2.2"))
+
+    def test_a_panel_that_has_never_reported_is_left_alone(self):
+        # Paired but never seen: claiming it needs an update would be a guess.
+        self.assertEqual([], registry_module.behind_release(self.panels(None), "1.2.2"))
+
+    def test_without_a_published_version_nothing_is_claimed(self):
+        self.assertEqual([], registry_module.behind_release(self.panels("1.2.0"), ""))
 
 
 class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):

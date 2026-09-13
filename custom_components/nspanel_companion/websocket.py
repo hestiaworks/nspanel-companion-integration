@@ -156,7 +156,20 @@ async def ws_unpair_scrypted(hass, connection, msg) -> None:
 @websocket_api.async_response
 @websocket_api.websocket_command({vol.Required("type"): "nspanel_companion/updater/status"})
 async def ws_updater_status(hass, connection, msg) -> None:
-    connection.send_result(msg["id"], {"paired": _registry(hass).updater_public()})
+    registry = _registry(hass)
+    # Read from what the last timed check found rather than asked for here:
+    # this command is polled while the page is open. The exception is a
+    # paired updater that has never answered — an add-on stopped or updated
+    # since Home Assistant started — where opening the page is a fair moment
+    # to try again rather than waiting out the interval.
+    if registry.release_check_is_overdue():
+        hass.async_create_background_task(
+            registry.async_check_release(), "nspanel_release_check_now",
+        )
+    connection.send_result(msg["id"], {
+        "paired": registry.updater_public(),
+        "release": registry.release_public(),
+    })
 
 
 @websocket_api.require_admin

@@ -17,6 +17,36 @@ RING_SOUNDS = {"off", "chime_1", "chime_2", "chime_3"}
 RETIRED_SOUNDS = {"chime", "bell", "ping"}
 
 
+def _percent(value: Any, what: str) -> int:
+    """A brightness as a whole per cent.
+
+    Zero is allowed: on this hardware it is the dimmest the backlight goes
+    rather than off, which is a reasonable thing to ask for in a bedroom.
+    """
+    try:
+        percent = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} must be a whole number of per cent") from None
+    if not 0 <= percent <= 100:
+        raise ValueError(f"{what} must be between 0 and 100 per cent")
+    return percent
+
+
+def _reading(value: Any, what: str) -> int:
+    """A light-sensor reading, in whatever units the sensor reports.
+
+    Not lux, and deliberately not treated as though it were: the panel sends
+    what it sees and the thresholds are chosen against that.
+    """
+    try:
+        reading = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"The {what} must be a whole number") from None
+    if not 0 <= reading <= 1_000_000:
+        raise ValueError(f"The {what} is out of range")
+    return reading
+
+
 def _clock(value: Any, what: str) -> str:
     """A time of day as "HH:MM", or a refusal.
 
@@ -284,6 +314,26 @@ def validate_layout(value: Any) -> dict[str, Any]:
     normalized["screen_schedule_enabled"] = bool(value.get("screen_schedule_enabled", False))
     normalized["screen_on_from"] = _clock(value.get("screen_on_from", "07:00"), "screen-on start")
     normalized["screen_on_to"] = _clock(value.get("screen_on_to", "22:00"), "screen-on end")
+    # The panel's own brightness, off by default: a window that sets one
+    # replaces Android's automatic brightness while the dashboard is in
+    # front, so a panel nobody has configured must be left alone. The night
+    # value belongs to the same window as the screen schedule — one set of
+    # hours rather than two to keep in step.
+    normalized["brightness_enabled"] = bool(value.get("brightness_enabled", False))
+    normalized["brightness"] = _percent(value.get("brightness", 60), "Bright-room brightness")
+    # night_brightness is what this was called while the level followed the
+    # clock rather than the room.
+    normalized["dark_brightness"] = _percent(
+        value.get("dark_brightness", value.get("night_brightness", 15)), "Dark-room brightness",
+    )
+    dark_below = _reading(value.get("dark_below", 3000), "dark threshold")
+    bright_above = _reading(value.get("bright_above", 6000), "bright threshold")
+    # Equal is allowed: it means no band, which is a legitimate choice for a
+    # room whose light does not hover around the boundary.
+    if dark_below > bright_above:
+        raise ValueError("The dark threshold cannot be above the bright one")
+    normalized["dark_below"] = dark_below
+    normalized["bright_above"] = bright_above
     normalized["show_clock"] = bool(value.get("show_clock", True))
     normalized["show_mic_indicator"] = bool(value.get("show_mic_indicator", True))
     mic_linger_seconds = int(value.get("mic_indicator_linger_seconds", 15))

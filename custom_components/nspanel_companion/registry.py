@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import hashlib
 import re
 import secrets
+import time
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -26,6 +27,27 @@ SENSITIVE_DIAGNOSTIC = re.compile(
 )
 
 
+def behind_release(panels: list[dict[str, Any]], version: str) -> list[dict[str, Any]]:
+    """The panels not running the published version.
+
+    "Not the same" rather than "older", on purpose. What Home Assistant has
+    is the version name a panel reported, and names do not sort — 1.2.2-rc.10
+    comes before 1.2.2-rc.9 as text. Deciding what is newer belongs to the
+    installer, which reads the version code off the panel over ADB and
+    refuses a downgrade. This answers the smaller question a badge asks: who
+    is not on what has been published.
+
+    A panel that has never reported a version is left out. It is paired and
+    unheard from, and saying it needs an update would be a guess.
+    """
+    if not version:
+        return []
+    return [
+        panel for panel in panels
+        if panel.get("app_version") and str(panel["app_version"]) != version
+    ]
+
+
 class PanelRegistry:
     """Own panel records for one Home Assistant instance."""
 
@@ -41,6 +63,14 @@ class PanelRegistry:
         self._panels: dict[str, dict[str, Any]] = {}
         self._scrypted_bridges: dict[str, dict[str, Any]] = {}
         self._updater: dict[str, Any] | None = None
+        #: What the updater add-on last said is published, and when. Held in
+        #: memory rather than stored: it is a cache of somebody else's fact,
+        #: and a restart is the right moment to ask again.
+        self._release: dict[str, Any] = {"latest": None, "checked_at": None, "error": ""}
+        #: When a look was last attempted, successful or not, so a paired
+        #: updater that has never answered can be asked again without the
+        #: admin page turning into a retry loop against a stopped add-on.
+        self._release_attempt = 0.0
         self._settings: dict[str, Any] = {"passive_panel_discovery": False}
 
     async def async_load(self) -> None:
@@ -157,6 +187,66 @@ class PanelRegistry:
             "The updater add-on could not be reached on this host. If it runs "
             "elsewhere, pair it manually with its address and pairing code."
         )
+
+    def release_public(self) -> dict[str, Any]:
+        """The published release as last reported, and who is not on it."""
+        latest = self._release.get("latest") or {}
+        return {
+            **self._release,
+            "behind": [
+                {"panel_id": panel["panel_id"], "name": panel.get("name")}
+                for panel in behind_release(self.list_public(), str(latest.get("version", "")))
+            ],
+        }
+
+    def release_check_is_overdue(self, retry_after: float = 300.0) -> bool:
+        """Whether asking again is worth it right now.
+
+        Only when nothing has ever been learned: an add-on that was stopped,
+        or one updated since Home Assistant started, leaves the check with
+        no answer and six hours before the next timer. Opening the page is a
+        reasonable moment to try again — but not every fifteen seconds while
+        it sits open, which is how often the page asks for its status.
+        """
+        return (
+            self._updater is not None
+            and not self._release.get("latest")
+            and time.monotonic() - self._release_attempt > retry_after
+        )
+
+    async def async_check_release(self) -> dict[str, Any]:
+        """Ask the updater add-on what is published.
+
+        Never raises. This runs on a timer, and a house with no internet, a
+        paused add-on or a rate-limited GitHub must not turn into an error
+        someone has to dismiss — the last answer stands and the reason sits
+        beside it.
+        """
+        if not self._updater:
+            return self._release
+        self._release_attempt = time.monotonic()
+        session = async_get_clientsession(self._hass)
+        try:
+            async with session.get(
+                f"{self._updater['base_url']}/api/latest",
+                headers={"Authorization": f"Bearer {self._updater['token']}"},
+                timeout=60,
+            ) as response:
+                result = await response.json()
+                if response.status != 200:
+                    raise ValueError(result.get("error", "Update check failed"))
+        except Exception as err:  # noqa: BLE001 - a check is never fatal
+            self._release = {**self._release, "error": str(err)}
+            return self._release
+        if result.get("latest"):
+            self._release = {
+                "latest": result["latest"],
+                "checked_at": result.get("checked_at"),
+                "error": result.get("error", ""),
+            }
+        else:
+            self._release = {**self._release, "error": result.get("error", "")}
+        return self._release
 
     async def async_updater_request(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not self._updater:
@@ -373,6 +463,13 @@ class PanelRegistry:
         record = self._require(panel_id)
         record["last_seen"] = datetime.now(UTC).isoformat()
         record["app_version"] = str(metadata.get("app_version", ""))[:64] or None
+        # What the panel's light sensor reads, so the thresholds that decide
+        # bright from dark can be chosen by looking at the number rather than
+        # by guessing at units the sensor does not document.
+        ambient = metadata.get("ambient_light")
+        record["ambient_light"] = (
+            round(float(ambient), 1) if isinstance(ambient, (int, float)) else None
+        )
         reported = str(metadata.get("layout_revision", ""))[:64] or None
         if reported and reported != record.get("reported_layout_revision"):
             self.record_event(panel_id, f"Layout revision {reported} acknowledged")

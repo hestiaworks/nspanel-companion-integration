@@ -34,6 +34,11 @@ const DEFAULT_LAYOUT = (revision) => ({
   screen_schedule_enabled: false,
   screen_on_from: "07:00",
   screen_on_to: "22:00",
+  brightness_enabled: false,
+  brightness: 60,
+  dark_brightness: 15,
+  dark_below: 3000,
+  bright_above: 6000,
   show_clock: true,
   show_mic_indicator: true,
   mic_indicator_linger_seconds: 15,
@@ -414,6 +419,11 @@ class NSPanelCompanionPanel extends HTMLElement {
       screen_schedule_enabled: values.get("screen_schedule_enabled") === "on",
       screen_on_from: String(values.get("screen_on_from") || "07:00"),
       screen_on_to: String(values.get("screen_on_to") || "22:00"),
+      brightness_enabled: values.get("brightness_enabled") === "on",
+      brightness: Number(values.get("brightness") ?? 60),
+      dark_brightness: Number(values.get("dark_brightness") ?? 15),
+      dark_below: Number(values.get("dark_below") ?? 3000),
+      bright_above: Number(values.get("bright_above") ?? 6000),
       show_clock: values.get("show_clock") === "on",
       show_mic_indicator: values.get("show_mic_indicator") === "on",
       mic_indicator_linger_seconds: Number(values.get("mic_indicator_linger_seconds") ?? 15),
@@ -830,6 +840,11 @@ class NSPanelCompanionPanel extends HTMLElement {
       screen_schedule_enabled: Boolean(this.editor.layout.screen_schedule_enabled),
       screen_on_from: String(this.editor.layout.screen_on_from || "07:00"),
       screen_on_to: String(this.editor.layout.screen_on_to || "22:00"),
+      brightness_enabled: Boolean(this.editor.layout.brightness_enabled),
+      brightness: Number(this.editor.layout.brightness ?? 60),
+      dark_brightness: Number(this.editor.layout.dark_brightness ?? 15),
+      dark_below: Number(this.editor.layout.dark_below ?? 3000),
+      bright_above: Number(this.editor.layout.bright_above ?? 6000),
       show_clock: this.editor.layout.show_clock !== false,
       show_mic_indicator: this.editor.layout.show_mic_indicator !== false,
       mic_indicator_linger_seconds: Number(this.editor.layout.mic_indicator_linger_seconds ?? 15),
@@ -1336,6 +1351,10 @@ class NSPanelCompanionPanel extends HTMLElement {
       applySource();
       source.addEventListener("change", applySource);
     }
+    this.shadowRoot.querySelectorAll("[data-slider-for]").forEach((slider) => {
+      const output = this.shadowRoot.querySelector(`[data-slider-value="${slider.dataset.sliderFor}"]`);
+      if (output) slider.addEventListener("input", () => { output.textContent = `${slider.value}%`; });
+    });
     this.shadowRoot.querySelector("#save-workspace")?.addEventListener("click", () => this.saveWorkspace());
     this.shadowRoot.querySelector("#revert-workspace")?.addEventListener("click", () => {
       // Redrawing the DOM reverts the settings forms, which are read from the
@@ -1540,11 +1559,14 @@ class NSPanelCompanionPanel extends HTMLElement {
   integrationStrip() {
     const bridges = (this.scrypted?.paired || []).length;
     const updater = this.updater?.paired;
+    const behind = (this.updater?.release?.behind || []).length;
     return `<div class="integration-strip" id="open-integrations" role="button" tabindex="0">
       <div><span class="dot ${bridges ? "on" : "off"}"></span><span class="name">Scrypted intercom</span>
         <span class="state">${bridges ? `connected · ${bridges} bridge${bridges === 1 ? "" : "s"}` : "not set up"}</span></div>
-      <div><span class="dot ${updater ? "on" : "off"}"></span><span class="name">Installation &amp; updates</span>
-        <span class="state">${updater ? "connected" : "not set up"}</span></div>
+      <div><span class="dot ${behind ? "warn" : updater ? "on" : "off"}"></span><span class="name">Installation &amp; updates</span>
+        <span class="state">${behind
+          ? `version ${escapeHtml(String(this.updater?.release?.latest?.version || ""))} available`
+          : updater ? "connected" : "not set up"}</span></div>
       <div class="go">Integrations →</div>
     </div>`;
   }
@@ -1708,10 +1730,36 @@ class NSPanelCompanionPanel extends HTMLElement {
   }
 
   /** The updater add-on as a band, with the ADB list only after a scan. */
+  /**
+   * What the last check found, as a line someone can act on.
+   *
+   * Nothing here installs anything: it says a version exists and which
+   * panels are not on it, and the install is the same scan-and-choose it
+   * always was. A check that failed says nothing at all — a badge that
+   * cannot be trusted is worse than no badge.
+   */
+  releaseNotice() {
+    const release = this.updater?.release;
+    const latest = release?.latest;
+    if (!latest?.version) return "";
+    const behind = release.behind || [];
+    if (!behind.length) {
+      return `<div class="foot">Panels are on ${escapeHtml(latest.version)}, the newest published release.</div>`;
+    }
+    const names = behind.map((panel) => escapeHtml(panel.name || panel.panel_id)).join(", ");
+    return `<div class="detail release-notice">
+      <div class="grow"><div class="t-control">Version ${escapeHtml(latest.version)} is available</div>
+        <div class="sub">${names} ${behind.length === 1 ? "is" : "are"} on an earlier version. Scan below and update from there.</div></div>
+      ${latest.url ? `<a class="small" href="${escapeHtml(latest.url)}" target="_blank" rel="noreferrer">Release notes</a>` : ""}
+    </div>`;
+  }
+
   updaterService() {
     const paired = this.updater?.paired;
+    const behind = (this.updater?.release?.behind || []).length;
     const head = `<div class="head"><span class="name">Installation &amp; updates</span>
       <span class="what">Discover ADB panels and install signed releases</span><span class="spacer"></span>
+      ${behind ? `<span class="status update">update available</span>` : ""}
       <span class="status ${paired ? "online" : "offline"}">${paired ? "Updater add-on connected" : "not set up"}</span></div>`;
     if (!paired) {
       return `<section class="service inactive">${head}
@@ -1724,6 +1772,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         <div class="foot">The six-digit code is printed in the add-on log. ADB discovery and installs appear here once paired.</div></section>`;
     }
     return `<section class="service">${head}
+      ${this.releaseNotice()}
       <form class="detail" id="adb-discovery">
         <div class="grow"><input id="adb-subnet" name="subnet" value="192.168.0.0/24" pattern="[0-9./]+" required aria-label="Private subnet"></div>
         <button class="small" ${this.busy ? "disabled" : ""}>${this.busy ? "Working…" : "Scan subnet"}</button>
@@ -1902,6 +1951,66 @@ class NSPanelCompanionPanel extends HTMLElement {
    * which left no way to Doorbell or Diagnostics without climbing a crumb
    * and made the editor look like a different application.
    */
+  /**
+   * A brightness as a slider with its number beside it.
+   *
+   * A box asks someone to imagine what 40 per cent looks like. A slider they
+   * can drag while looking at the panel does not, and the reading stays
+   * because the value is also a thing to be told rather than only felt.
+   */
+  brightnessSlider(name, label, value, hint) {
+    const current = Number(value);
+    return `<label class="slider-row">${label}
+      <span class="slider-field">
+        <input name="${name}" type="range" min="0" max="100" step="1" value="${current}"
+          data-slider-for="${name}">
+        <output data-slider-value="${name}">${current}%</output>
+      </span>
+      <small>${hint}</small></label>`;
+  }
+
+  /**
+   * What the panel's light sensor reads right now.
+   *
+   * The thresholds are in the sensor's own units — this hardware reports
+   * something that is plainly not lux — so the only way to choose them is to
+   * look at the number while the room is as you mean it.
+   */
+  ambientNow() {
+    const panel = this.panels.find((item) => item.panel_id === this.editor?.panel?.panel_id);
+    const reading = panel?.ambient_light;
+    if (reading === null || reading === undefined) {
+      return `<div class="foot">This panel has not reported a light reading yet. It arrives with the next heartbeat, within a minute.</div>`;
+    }
+    return `<div class="detail ambient-now"><div class="grow"><div class="t-control">Reading now · ${escapeHtml(String(reading))}</div>
+      <div class="sub">In the sensor's own units, not lux. Watch it with the lights on and off to choose the two below.</div></div></div>`;
+  }
+
+  /**
+   * What the two thresholds mean, in the reading someone is looking at.
+   *
+   * The band between them keeps whichever level the panel is already on.
+   * That is what stops a wavering sensor stepping the screen back and
+   * forth, and it is the part nobody can infer from two numbers in two
+   * boxes — "dark below 2000, bright above 3000" says nothing about 2500.
+   */
+  roomLightExplainer(layout) {
+    const dark = Number(layout.dark_below ?? 3000);
+    const bright = Number(layout.bright_above ?? 6000);
+    const panel = this.panels.find((item) => item.panel_id === this.editor?.panel?.panel_id);
+    const reading = panel?.ambient_light;
+    if (dark >= bright) {
+      return `<div class="foot">A reading below ${dark} is dark and anything above is bright, with no band in between.</div>`;
+    }
+    const now = reading === null || reading === undefined ? ""
+      : reading < dark ? ` It reads ${reading} now, so the panel is on the dark level.`
+      : reading > bright ? ` It reads ${reading} now, so the panel is on the bright level.`
+      : ` It reads ${reading} now, which is inside that band: the panel stays on whichever level it was already using.`;
+    return `<div class="foot">Between ${dark} and ${bright} nothing changes. Coming from a lit room the panel stays bright
+      until the reading drops below ${dark}; coming from darkness it stays dark until it rises above ${bright}. Set both to
+      the same number for no band at all.${now}</div>`;
+  }
+
   workspaceChrome(tab) {
     const { panel } = this.editor;
     const dirty = this.editor.dirty?.size || 0;
@@ -2100,7 +2209,8 @@ class NSPanelCompanionPanel extends HTMLElement {
         <form id="panel-general" class="settings-card">
           <label>Panel name<input name="panel_name" maxlength="64" required value="${escapeHtml(panel.name)}" placeholder="Living room"></label>
           <label>Panel theme<select name="theme_mode"><option value="inherit" ${this.editor.draftThemeMode === "inherit" ? "selected" : ""}>Auto · inherit Home Assistant</option><option value="light" ${this.editor.draftThemeMode === "light" ? "selected" : ""}>Light</option><option value="dark" ${this.editor.draftThemeMode === "dark" ? "selected" : ""}>Dark</option></select><small>Auto resolves the active Home Assistant light/dark appearance when the dashboard is published. Explicit Light or Dark stays fixed.</small></label>
-          <fieldset class="dashboard-behavior" aria-label="Dashboard behavior"><div class="band-label">Dashboard behavior</div><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>When disabled, the panel follows its Android display timeout.</small><label class="check"><input name="screen_schedule_enabled" type="checkbox" ${layout.screen_schedule_enabled ? "checked" : ""}> Only during these hours</label><div class="hours"><label>From<input name="screen_on_from" type="time" value="${escapeHtml(String(layout.screen_on_from || "07:00"))}"></label><label>To<input name="screen_on_to" type="time" value="${escapeHtml(String(layout.screen_on_to || "22:00"))}"></label></div><small>Outside these hours the panel lets its display sleep as usual, and waking on approach works again. A window may cross midnight. A call always lights the screen, whatever the hour.</small><label class="check"><input name="wake_on_approach" type="checkbox" ${layout.wake_on_approach ? "checked" : ""}> Wake the display when someone approaches</label><small>Uses the panel's proximity sensor. Ignored while the display is set to stay on.</small><label>Wake sensitivity<select name="wake_sensitivity"><option value="high" ${String(layout.wake_sensitivity || "medium") === "high" ? "selected" : ""}>High &middot; from across the room</option><option value="medium" ${String(layout.wake_sensitivity || "medium") === "medium" ? "selected" : ""}>Medium</option><option value="low" ${String(layout.wake_sensitivity || "medium") === "low" ? "selected" : ""}>Low &middot; only up close</option></select><small>The sensor measures reflected light, so a lighter wall or a shelf in front of the panel reads closer. Lower the sensitivity if it wakes on its own.</small></label><label class="check"><input name="show_clock" type="checkbox" ${layout.show_clock !== false ? "checked" : ""}> Show Home Assistant time</label><label class="check"><input name="show_mic_indicator" type="checkbox" ${layout.show_mic_indicator !== false ? "checked" : ""}> Show microphone privacy indicator</label><label>Keep microphone indicator green after use<input name="mic_indicator_linger_seconds" type="number" min="0" max="60" value="${Number(layout.mic_indicator_linger_seconds ?? 15)}"><small>Seconds; use 0 to show green only during active capture.</small></label></fieldset>
+          <fieldset class="display" aria-label="Display"><div class="band-label">Display</div><label class="check"><input name="keep_screen_on" type="checkbox" ${layout.keep_screen_on ? "checked" : ""}> Keep display on while dashboard is open</label><small>When disabled, the panel follows its Android display timeout.</small><label class="check"><input name="screen_schedule_enabled" type="checkbox" ${layout.screen_schedule_enabled ? "checked" : ""}> Only during these hours</label><div class="hours"><label>From<input name="screen_on_from" type="time" value="${escapeHtml(String(layout.screen_on_from || "07:00"))}"></label><label>To<input name="screen_on_to" type="time" value="${escapeHtml(String(layout.screen_on_to || "22:00"))}"></label></div><small>Outside these hours the panel lets its display sleep as usual, and waking on approach works again. A window may cross midnight. A call always lights the screen, whatever the hour.</small><label class="check"><input name="wake_on_approach" type="checkbox" ${layout.wake_on_approach ? "checked" : ""}> Wake the display when someone approaches</label><small>Uses the panel's proximity sensor. Ignored while the display is set to stay on.</small><label>Wake sensitivity<select name="wake_sensitivity"><option value="high" ${String(layout.wake_sensitivity || "medium") === "high" ? "selected" : ""}>High &middot; from across the room</option><option value="medium" ${String(layout.wake_sensitivity || "medium") === "medium" ? "selected" : ""}>Medium</option><option value="low" ${String(layout.wake_sensitivity || "medium") === "low" ? "selected" : ""}>Low &middot; only up close</option></select><small>The sensor measures reflected light, so a lighter wall or a shelf in front of the panel reads closer. Lower the sensitivity if it wakes on its own.</small></label><label class="check"><input name="brightness_enabled" type="checkbox" ${layout.brightness_enabled ? "checked" : ""}> Set the display brightness</label><small>Off leaves it to the panel's own automatic brightness. On, the panel picks one of two levels from what its light sensor sees.</small>${this.brightnessSlider("brightness", "Bright room", layout.brightness ?? 60, "Per cent, while the room reads as bright.")}${this.brightnessSlider("dark_brightness", "Dark room", layout.dark_brightness ?? layout.night_brightness ?? 15, "Per cent, while it reads as dark. A call is always shown at the bright level.")}<div class="band-label">Room light</div>${this.ambientNow()}<label>Dark below<input name="dark_below" type="number" min="0" max="1000000" value="${Number(layout.dark_below ?? 3000)}"><small>The panel switches to the dark level once the reading falls below this.</small></label><label>Bright above<input name="bright_above" type="number" min="0" max="1000000" value="${Number(layout.bright_above ?? 6000)}"><small>And back to the bright level once it rises above this.</small></label>${this.roomLightExplainer(layout)}</fieldset>
+          <fieldset class="dashboard-behavior" aria-label="Dashboard behavior"><div class="band-label">Dashboard behavior</div><label>Return to first page after<input name="return_seconds" type="number" min="0" max="3600" value="${Number(layout.default_page_return_seconds ?? 60)}"><small>Seconds; use 0 to disable automatic return.</small></label><label class="check"><input name="show_clock" type="checkbox" ${layout.show_clock !== false ? "checked" : ""}> Show Home Assistant time</label><label class="check"><input name="show_mic_indicator" type="checkbox" ${layout.show_mic_indicator !== false ? "checked" : ""}> Show microphone privacy indicator</label><label>Keep microphone indicator green after use<input name="mic_indicator_linger_seconds" type="number" min="0" max="60" value="${Number(layout.mic_indicator_linger_seconds ?? 15)}"><small>Seconds; use 0 to show green only during active capture.</small></label></fieldset>
           <fieldset class="system-ui" aria-label="Android system UI"><div class="band-label">Android system UI</div><label>Navigation bar<select name="nav_bar_mode"><option value="listener" ${String(layout.nav_bar_mode || "listener") === "listener" ? "selected" : ""}>Hide, and re-hide when Android shows it</option><option value="immersive" ${String(layout.nav_bar_mode || "listener") === "immersive" ? "selected" : ""}>Suppress entirely (recommended)</option><option value="visible" ${String(layout.nav_bar_mode || "listener") === "visible" ? "selected" : ""}>Leave visible</option></select><small>Re-hiding lets the bar appear for a moment whenever a long press or an edge swipe summons it. Suppressing it stops Android summoning it at all.</small></label><label class="check"><input name="hide_accessibility_button" type="checkbox" ${layout.hide_accessibility_button ? "checked" : ""}> Hide the panel's floating back button</label><small>Suppressing the navigation bar and hiding the back button both need a system permission the updater add-on grants when it installs the app. If the panel has not been updated since this setting appeared, update it once and these will take effect.</small></fieldset>
           
           <label>Stable device ID<input value="${escapeHtml(panel.device_id)}" readonly></label>
@@ -2617,6 +2727,11 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .status.waiting  { background:var(--accent-wash); color:var(--pending); }
 .status.offline  { background:var(--surface-raised); color:var(--muted); }
 .status.error    { background:var(--danger-wash); color:var(--danger); }
+/* Something published that this house is not running. Accent, because it is
+   worth noticing and is not a fault. */
+.status.update   { background:var(--accent-wash); color:var(--accent-ink); }
+.release-notice .sub { font:400 13px/1.5 var(--font); color:var(--muted); margin-top:2px; }
+.release-notice a { color:var(--accent-ink); text-decoration:none; white-space:nowrap; }
 
 .dot { flex:none; width:8px; height:8px; border-radius:50%; background:var(--disabled); }
 .dot.on { background:var(--ok); }
@@ -2723,6 +2838,9 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .service.inactive .head .name { color:var(--muted); }
 .service .foot { min-height:48px; display:flex; align-items:center; padding:0 var(--pane-inset); font:400 13px/1.5 var(--font); color:var(--muted); }
 .service .detail { min-height:var(--row-tall); display:flex; align-items:center; gap:14px; padding:12px var(--pane-inset); }
+/* A bridge address is one unbreakable word, so it spilled out of the space
+   left by the buttons and ran underneath them. It may break anywhere. */
+.service .detail .id { overflow-wrap:anywhere; }
 
 .adb-row { min-height:64px; display:flex; align-items:center; gap:14px; padding:0 var(--pane-inset); }
 .adb-row + .adb-row { border-top:1px solid var(--line); }
@@ -2806,6 +2924,13 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .slot.empty .plus { font-size:20px; line-height:1; }
 /* The undecided page: one prompt, not a grid of them. */
 .slot.empty.choose { border-color:var(--muted); }
+/* A level you set by looking at the panel, with the number it lands on. */
+.slider-row .slider-field { display:flex; align-items:center; gap:var(--s3); }
+.slider-row input[type="range"] { flex:1; min-width:0; height:var(--control); padding:0;
+  border:0; background:transparent; accent-color:var(--accent); }
+.slider-row output { flex:none; min-width:46px; text-align:right; font:500 13px/1 var(--mono); color:var(--muted); }
+.ambient-now .sub { font:400 13px/1.5 var(--font); color:var(--muted); margin-top:2px; }
+
 /* The two ends of the screen-on window, as one row of the settings band.
 
    iOS draws a time input as a native control that lays its own padding
@@ -3242,7 +3367,7 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
    rows rather than a horizontal scroll. The one exception is the tab bar,
    which scrolls because tabs in two rows stop reading as one control. */
 @media (max-width:600px) {
-  :host { --page-inset:14px; --pane-inset:16px; }
+  :host { --page-inset:16px; --pane-inset:16px; }
 
   /* The bar keeps its identity on one line and puts the actions under it.
      .spacer is already between the two halves, so it becomes the break. */
@@ -3309,9 +3434,27 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
   .workspace-panel .actions { flex-wrap:wrap; }
   .workspace-panel .actions > button { flex:1 1 150px; }
   /* A service headline is its name, what it is, and its state: at this width
-     the state goes under the name instead of off the edge. */
-  .service .head, .service .detail { flex-wrap:wrap; row-gap:6px; }
-  .service .head .spacer { flex-basis:100%; height:0; }
+     the state goes under the name instead of off the edge.
+
+     Everything below is about room. Stacked, these rows kept the heights
+     they were given for a single line each, so three lines arrived with no
+     space above or below them and the whole page read as one dense block.
+     A row that wraps is a row that needs padding rather than a fixed
+     height. */
+  .service .head, .service .detail { flex-wrap:wrap; row-gap:10px; }
+  .service .head { min-height:0; padding:16px var(--pane-inset); }
+  .service .head .name { flex:1 1 100%; }
+  .service .head .what { flex:1 1 100%; }
+  .service .head .spacer { display:none; }
+  .service .foot { min-height:0; padding:14px var(--pane-inset); }
+  /* A bridge gets its own line, and its buttons the next one, sharing it.
+     Side by side there was room for neither the address nor the actions. */
+  .service .detail { row-gap:12px; padding:16px var(--pane-inset); }
+  .service .detail > .grow { flex:1 1 100%; }
+  .service .detail > button { flex:1; }
+  .service .detail > input:not([type="hidden"]) { flex:1 1 100%; }
+  /* Two services are two things, not one long list of rows. */
+  .service + .service { margin-top:var(--s4); border-top:1px solid var(--line); }
 
   .icon-grid { grid-template-columns:repeat(3,1fr); }
   .icon-grid label:nth-child(4n) { border-right:1px solid var(--line); }

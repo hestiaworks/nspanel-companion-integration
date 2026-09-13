@@ -209,7 +209,12 @@ class TemplateScopeTest(unittest.TestCase):
         for number, line in enumerate(source, 1):
             match = self.METHOD.match(line)
             if match:
-                current, has_local = match.group(1), False
+                current = match.group(1)
+                # A method handed a layout has one as surely as a method that
+                # declares one. Reading only declarations flagged
+                # roomLightExplainer(layout), which is exactly what the rule
+                # is meant to permit.
+                has_local = bool(re.search(r"\(([^)]*\b)?layout\b", line))
             # A local layout, however it was introduced — including by
             # destructuring, which is how editorDialog gets one.
             if re.search(r"\b(const|let|var)\s+layout\b", line) or re.search(

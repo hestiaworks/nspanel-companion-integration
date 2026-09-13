@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers import config_validation as cv
 
 from .const import DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
@@ -20,6 +23,13 @@ from .websocket import async_register_websocket_commands
 # There is no YAML configuration: panels are added from the UI config flow, and
 # async_setup only registers the APIs the panels and the frontend talk to.
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+#: How often to ask what is published. Rarely: a release is a thing that
+#: happens a few times a month, and the add-on holds its own hour-long cache
+#: behind this, so the interval is about how soon a badge appears rather than
+#: about load.
+RELEASE_CHECK_INTERVAL = timedelta(hours=6)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -48,6 +58,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if isinstance(discovery, PanelDiscovery):
         await discovery.async_set_passive(registry.passive_panel_discovery)
     async_register_panel(hass)
+
+    # Look for a published release now and every few hours after. The answer
+    # is only shown, never acted on: someone still chooses to update a panel.
+    # The add-on caches its own lookup, so this costs a request to a
+    # neighbouring container rather than one to GitHub.
+    async def check_release(_now=None) -> None:
+        await registry.async_check_release()
+
+    entry.async_on_unload(
+        async_track_time_interval(hass, check_release, RELEASE_CHECK_INTERVAL)
+    )
+    entry.async_create_background_task(hass, check_release(), "nspanel_release_check")
     return True
 
 

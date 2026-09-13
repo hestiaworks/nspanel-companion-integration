@@ -169,6 +169,88 @@ class LayoutValidationTest(unittest.TestCase):
         ))
         self.assertFalse(layout_module.doorbell_is_playable({}))
 
+    def test_normalizes_the_brightness_settings(self):
+        """Off by default, because setting one takes the screen off Android.
+
+        A window that sets a brightness replaces the system's automatic
+        curve, so a panel that has never been told a brightness must keep
+        behaving as it did.
+        """
+        layout = {
+            "schema_version": 1, "revision": "brightness",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+        }
+        normalized = layout_module.validate_layout(layout)
+        self.assertFalse(normalized["brightness_enabled"])
+        self.assertEqual(60, normalized["brightness"])
+        self.assertEqual(15, normalized["dark_brightness"])
+        self.assertEqual(3000, normalized["dark_below"])
+        self.assertEqual(6000, normalized["bright_above"])
+
+    def test_the_room_thresholds_are_normalized(self):
+        """Which reading counts as dark, and which as bright.
+
+        In the sensor's own units, which are not lux — this hardware reads
+        about 8900 in a lit room and about 4300 as the evening comes in. The
+        panel reports what it sees so these can be chosen by looking.
+        """
+        layout = {
+            "schema_version": 1, "revision": "thresholds",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+            "brightness_enabled": True, "dark_below": 2500, "bright_above": 7000,
+        }
+        normalized = layout_module.validate_layout(layout)
+        self.assertEqual(2500, normalized["dark_below"])
+        self.assertEqual(7000, normalized["bright_above"])
+
+    def test_the_two_thresholds_may_meet(self):
+        """One number, no band: the level flips as the reading crosses it.
+
+        Reasonable in a room whose light does not sit near the boundary, and
+        refusing it would be insisting on hysteresis nobody asked for.
+        """
+        layout = {
+            "schema_version": 1, "revision": "no-band",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+            "brightness_enabled": True, "dark_below": 4000, "bright_above": 4000,
+        }
+        normalized = layout_module.validate_layout(layout)
+        self.assertEqual(4000, normalized["dark_below"])
+        self.assertEqual(4000, normalized["bright_above"])
+
+    def test_a_dark_threshold_above_the_bright_one_is_refused(self):
+        # Nothing breaks on the panel if they cross — it still decides — but
+        # a form that accepts it has let someone describe a room where dark
+        # is brighter than bright.
+        layout = {
+            "schema_version": 1, "revision": "thresholds",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+            "brightness_enabled": True, "dark_below": 7000, "bright_above": 2500,
+        }
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(layout)
+
+    def test_the_dark_level_is_read_from_its_old_name_too(self):
+        # It was night_brightness while the level followed the clock.
+        layout = {
+            "schema_version": 1, "revision": "renamed",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+            "night_brightness": 5,
+        }
+        self.assertEqual(5, layout_module.validate_layout(layout)["dark_brightness"])
+
+    def test_a_brightness_outside_the_range_is_refused(self):
+        layout = {
+            "schema_version": 1, "revision": "brightness",
+            "pages": [{"id": "p", "widgets": [{"type": "weather", "entity_id": "weather.home"}]}],
+            "brightness_enabled": True, "brightness": 140,
+        }
+        with self.assertRaises(ValueError):
+            layout_module.validate_layout(layout)
+        # Zero is the dimmest the hardware goes, not off, so it is allowed.
+        layout["brightness"] = 0
+        self.assertEqual(0, layout_module.validate_layout(layout)["brightness"])
+
     def test_normalizes_keep_screen_on(self):
         value = layout_module.validate_layout({
             "schema_version": 1,

@@ -6,6 +6,7 @@ export const PANELS = [
     panel_id: "8f2a-c401-19bd", device_id: "8f2a-c401-19bd", name: "Living room",
     revoked: false, layout_revision: "ui-1788259412773", page_count: 4, connected: true,
     app_version: "1.1.0 (1010099)", reported_layout_revision: "ui-1788259412773",
+    ambient_light: 4342.0,
     events: [
       { at: new Date(Date.now() - 60_000).toISOString(), message: "Layout revision 42 acknowledged", level: "info" },
       { at: new Date(Date.now() - 120_000).toISOString(), message: "Layout revision 42 published", level: "info" },
@@ -73,7 +74,17 @@ const RESPONSES = {
       { id: "garage", name: "Garage bridge", base_url: "http://192.0.2.31:11080", version: "0.9.4" },
     ],
   },
-  "nspanel_companion/updater/status": { paired: { base_url: "http://192.0.2.10:8098" } },
+  "nspanel_companion/updater/status": {
+    paired: { base_url: "http://192.0.2.10:8098" },
+    // What the add-on last said is published, and who is not on it. The
+    // shape the integration sends, so the badge is drawn from the real one.
+    release: {
+      latest: { version: "1.2.3", version_code: 1020399, url: "https://example.invalid/r", channel: "stable" },
+      checked_at: 1788800000,
+      error: "",
+      behind: [{ panel_id: "e274-afd5-af63", name: "NSPanel 79F2" }],
+    },
+  },
   "nspanel_companion/panels/discovery/scan": { panels: [
     { id: "31c7-08ae-4f52", name: "NSPanel Pro (hallway)", request_id: "req-1" },
     { id: "a4d0-77b2-0e13", name: "NSPanel Pro (kitchen)", request_id: "req-2" },
