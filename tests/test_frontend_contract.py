@@ -145,6 +145,24 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn(f"?v={manifest['version']}\"", const_source)
 
 
+    def test_the_release_badge_does_not_claim_a_panel_is_older(self):
+        """`behind_release` means "not this version", not "older than it".
+
+        Deciding what is newer needs the version code, which Home Assistant
+        never sees — it has only the name a panel reported, and names do not
+        sort. The installer does that comparison over ADB and refuses a
+        downgrade; the badge answers the smaller question of who is not on
+        what has been published.
+
+        Saying "an earlier version" claims the comparison was made. It was
+        not, and it was wrong in practice: after v1.3.1 shipped, three panels
+        already running it were told they were on an earlier version, because
+        the published version the badge still held was 1.3.0.
+        """
+        source = SCRIPT.read_text()
+        self.assertNotIn("earlier version", source)
+
+
 if __name__ == "__main__":
     unittest.main()
 

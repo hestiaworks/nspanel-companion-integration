@@ -1749,7 +1749,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     const names = behind.map((panel) => escapeHtml(panel.name || panel.panel_id)).join(", ");
     return `<div class="detail release-notice">
       <div class="grow"><div class="t-control">Version ${escapeHtml(latest.version)} is available</div>
-        <div class="sub">${names} ${behind.length === 1 ? "is" : "are"} on an earlier version. Scan below and update from there.</div></div>
+        <div class="sub">${names} ${behind.length === 1 ? "is" : "are"} not on this version. Scan below and update from there.</div></div>
       ${latest.url ? `<a class="small" href="${escapeHtml(latest.url)}" target="_blank" rel="noreferrer">Release notes</a>` : ""}
     </div>`;
   }
