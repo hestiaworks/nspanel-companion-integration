@@ -242,13 +242,32 @@ class PanelWebSocketView(HomeAssistantView):
 
         @callback
         def state_changed(event) -> None:
+            nonlocal entities
             state = event.data.get("new_state")
+            old_state = event.data.get("old_state")
+            # An entity appearing or vanishing changes what this panel may
+            # see, and this set is the whole boundary: the snapshot, history,
+            # schedules, service calls and the filter below all consult it.
+            #
+            # It used to be computed once when the socket opened, which is
+            # exactly the wrong moment. Home Assistant accepts connections
+            # before its integrations have finished loading, so a panel
+            # reconnecting after a restart bound itself to whatever existed in
+            # that second. After a power cut the panel came back inside a
+            # minute, climate did not exist yet, and the thermostat page read
+            # "No climate entity found" until someone restarted the app by
+            # hand — the entity was filtered out of every update for the life
+            # of the connection.
+            #
+            # Recomputed only on an appearance or a disappearance, which is
+            # rare; an ordinary state change cannot alter the set.
+            if old_state is None or state is None:
+                entities = allowed_entity_ids(layout, self._hass.states.async_entity_ids())
             if state is not None and state.entity_id in entities and not socket.closed:
                 self._hass.async_create_task(socket.send_json({"type": "state_changed", "state": state_json(state)}))
                 if state.entity_id.startswith("weather."):
                     self._hass.async_create_task(send_forecast([state.entity_id], "daily"))
                     self._hass.async_create_task(send_forecast([state.entity_id], "hourly"))
-            old_state = event.data.get("old_state")
             if (
                 not socket.closed
                 and doorbell_config.get("enabled", False)

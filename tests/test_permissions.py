@@ -46,5 +46,31 @@ class PanelPermissionsTest(unittest.TestCase):
         self.assertFalse(module.service_allowed("light.room", "light", "remove_config_entry", entities))
 
 
+    def test_a_thermostat_widget_resolves_nothing_until_a_climate_entity_exists(self):
+        """The set a panel may see depends on what exists when it is computed.
+
+        Home Assistant accepts websocket connections before its integrations
+        have finished loading. After a power cut the panel reconnects within
+        about forty-five seconds, and if `climate.*` does not exist yet a
+        thermostat widget resolves to nothing at all.
+
+        That is correct at the time. What is not correct is leaving it that
+        way: the set was computed once per socket and never revisited, so the
+        entity appearing a minute later was filtered out of every state_changed
+        for the life of the connection. The panel showed "No climate entity
+        found" until someone restarted the app by hand.
+        """
+        layout = {"pages": [{"widgets": [{"type": "thermostat"}]}]}
+        still_starting = ["sensor.room", "light.one"]
+        self.assertEqual(set(), module.allowed_entity_ids(layout, still_starting))
+
+        fully_started = [*still_starting, "climate.living_room"]
+        self.assertEqual(
+            {"climate.living_room"},
+            module.allowed_entity_ids(layout, fully_started),
+            "recomputing once the entity exists has to pick it up",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -163,6 +163,27 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("earlier version", source)
 
 
+    def test_the_panel_socket_revisits_its_entity_set_when_entities_appear(self):
+        """A set computed once per socket goes stale the moment one is added.
+
+        `allowed_entity_ids` is the panel's whole permission boundary: the
+        initial snapshot, history, schedules, service calls and the
+        state_changed filter all consult it. Computed once at connect and never
+        again, an entity that appears later is invisible *and* uncontrollable
+        until the socket is reopened.
+
+        Home Assistant restarting is exactly when this bites, because the panel
+        reconnects while integrations are still loading.
+        """
+        source = (ROOT / "custom_components/nspanel_companion/http.py").read_text()
+        self.assertIn("nonlocal entities", source,
+                      "the state listener must be able to update the allowed set")
+        self.assertGreaterEqual(
+            source.count("allowed_entity_ids("), 2,
+            "the allowed set has to be recomputed, not only built at connect",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
 
