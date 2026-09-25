@@ -184,6 +184,24 @@ class FrontendContractTest(unittest.TestCase):
         )
 
 
+    def test_a_panel_can_report_a_problem_into_its_own_event_list(self):
+        """A panel that finds something wrong needs somewhere to say so.
+
+        The app's health journal only reaches Home Assistant inside the
+        diagnostics blob, which nobody reads. The panel record already keeps
+        an event list, and that is what the UI shows — so the panel is given
+        a way to write into it.
+
+        Added for the WiFi reconnect watchdog, which gives up after five
+        attempts and has to explain why rather than reconnecting for ever.
+        Deliberately generic: the next panel-side problem should not need its
+        own plumbing.
+        """
+        source = (ROOT / "custom_components/nspanel_companion/http.py").read_text()
+        self.assertIn('"panel_event"', source)
+        self.assertIn("record_event", source)
+
+
 if __name__ == "__main__":
     unittest.main()
 
