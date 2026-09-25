@@ -17,6 +17,17 @@ RING_SOUNDS = {"off", "chime_1", "chime_2", "chime_3"}
 RETIRED_SOUNDS = {"chime", "bell", "ping"}
 
 
+
+def _bounded_int(value: Any, what: str, low: int, high: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} must be a whole number") from None
+    if not low <= number <= high:
+        raise ValueError(f"{what} must be between {low} and {high}")
+    return number
+
+
 def _percent(value: Any, what: str) -> int:
     """A brightness as a whole per cent.
 
@@ -381,6 +392,32 @@ def validate_layout(value: Any) -> dict[str, Any]:
     if wake_sensitivity not in {"low", "medium", "high"}:
         raise ValueError("Invalid wake sensitivity")
     normalized["wake_sensitivity"] = wake_sensitivity
+    # How long the display stays lit once the panel stops holding it on.
+    #
+    # Android's own timeout would do this, except that on this hardware it is
+    # not ours: it rests at 8,081,000 ms — two and a quarter hours — written by
+    # the vendor's app as its own screens come and go. A panel that is not
+    # actively holding its screen on therefore never really sleeps, whether
+    # that is because a schedule closed or because the setting is simply off.
+    normalized["screen_off_after_seconds"] = _bounded_int(
+        value.get("screen_off_after_seconds", 30), "Screen off delay", 10, 600,
+    )
+    # Reconnecting WiFi to shake a panel off a distant access point.
+    #
+    # Off unless asked for. This is a workaround for a device that will not
+    # roam: after a power cut a panel can come up on whichever router was
+    # already awake and stay there, at -70 dBm, with a far better one in
+    # range. Phones and laptops move by themselves; this hardware does not.
+    if "wifi_reconnect_enabled" in value and not isinstance(value["wifi_reconnect_enabled"], bool):
+        raise ValueError("wifi_reconnect_enabled must be a boolean")
+    normalized["wifi_reconnect_enabled"] = bool(value.get("wifi_reconnect_enabled", False))
+    # A threshold rather than a fixed number, because the panel cannot see
+    # what else is in range without a location permission a wall panel has no
+    # business asking for. Set it below whatever a healthy panel here reads
+    # and it will never fire on one that is simply far from the router.
+    normalized["wifi_reconnect_below_dbm"] = _bounded_int(
+        value.get("wifi_reconnect_below_dbm", -70), "WiFi reconnect threshold", -90, -40,
+    )
     theme_mode = str(value.get("theme_mode", "light"))
     if theme_mode not in {"light", "dark", "inherit"}:
         raise ValueError("Invalid panel theme")

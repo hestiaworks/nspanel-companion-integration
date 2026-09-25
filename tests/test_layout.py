@@ -604,6 +604,49 @@ class ThermostatModeChoiceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.panel(fan_modes=[f"mode_{n}" for n in range(9)])
 
+
+class PanelSleepAndNetworkTest(unittest.TestCase):
+    """Two settings a wall panel turns out to need.
+
+    Both exist because this hardware does not do the sensible thing on its
+    own. Its Android display timeout rests at 8,081,000 ms — two and a
+    quarter hours — set by the vendor's app rather than by us, so a panel
+    that is not actively holding its screen on does not really sleep. And
+    its WiFi will sit on a distant access point at -70 dBm rather than roam
+    to one at -44, which after a power cut is exactly where it lands.
+    """
+
+    def base(self, **extra):
+        return {"schema_version": 1, "revision": "r",
+                "pages": [{"id": "p", "widgets": [{"type": "weather"}]}], **extra}
+
+    def test_screen_off_delay_defaults_and_normalises(self):
+        value = layout_module.validate_layout(self.base())
+        self.assertEqual(30, value["screen_off_after_seconds"])
+        value = layout_module.validate_layout(self.base(screen_off_after_seconds=120))
+        self.assertEqual(120, value["screen_off_after_seconds"])
+
+    def test_screen_off_delay_refuses_values_off_the_scale(self):
+        """Below ten seconds is unusable; beyond ten minutes is not a sleep."""
+        for bad in (5, 0, -30, 601, 100000):
+            with self.assertRaises(ValueError, msg=f"{bad} should be refused"):
+                layout_module.validate_layout(self.base(screen_off_after_seconds=bad))
+
+    def test_wifi_reconnect_is_off_unless_asked_for(self):
+        value = layout_module.validate_layout(self.base())
+        self.assertFalse(value["wifi_reconnect_enabled"])
+        self.assertEqual(-70, value["wifi_reconnect_below_dbm"])
+
+    def test_wifi_reconnect_threshold_stays_in_a_sane_band(self):
+        value = layout_module.validate_layout(
+            self.base(wifi_reconnect_enabled=True, wifi_reconnect_below_dbm=-75))
+        self.assertTrue(value["wifi_reconnect_enabled"])
+        self.assertEqual(-75, value["wifi_reconnect_below_dbm"])
+        for bad in (-100, -20, 0, 50):
+            with self.assertRaises(ValueError, msg=f"{bad} should be refused"):
+                layout_module.validate_layout(self.base(wifi_reconnect_below_dbm=bad))
+
+
 if __name__ == "__main__":
     unittest.main()
 

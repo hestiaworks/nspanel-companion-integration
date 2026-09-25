@@ -431,6 +431,22 @@ class PanelWebSocketView(HomeAssistantView):
                         # them as busy have no other way to learn it.
                         await send_roster_to_all()
                         continue
+                    if data.get("type") == "panel_event":
+                        # Somewhere for a panel to say something went wrong.
+                        #
+                        # Its own health journal only reaches Home Assistant
+                        # inside the diagnostics blob, which nobody reads. The
+                        # event list is what the interface already shows, so
+                        # the panel is allowed to write into it — trimmed and
+                        # with the level constrained, because this arrives
+                        # from the panel rather than from here.
+                        level = str(data.get("level", "info"))
+                        registry.record_event(
+                            panel_id,
+                            str(data.get("message", ""))[:160],
+                            level if level in {"info", "warn", "error"} else "info",
+                        )
+                        continue
                     if data.get("type") == "history_request":
                         await send_history(
                             str(data.get("entity_id", "")), str(data.get("range", "24h")),
