@@ -122,11 +122,12 @@ class FrontendContractTest(unittest.TestCase):
 
     def test_admin_websocket_commands_use_current_ha_decorator(self):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
-        # 29: the 25 that remained after scrypted/assign went — publishing a
+        # 30: the 25 that remained after scrypted/assign went — publishing a
         # layout is one command, and the doorbell's Scrypted credentials are
-        # filled in as it saves — plus four for the talkback add-on, which is
-        # paired, unpaired and asked about exactly like the updater.
-        self.assertEqual(29, source.count("@websocket_api.require_admin"))
+        # filled in as it saves — plus five for the talkback add-on: paired,
+        # unpaired and asked about exactly like the updater, and a test that
+        # plays a tone at the door.
+        self.assertEqual(30, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
         self.assertIn('{"nspanel-companion", "probable-nspanel"}', source)
         self.assertIn('device.get("adb_state") == "device"', source)
@@ -394,3 +395,32 @@ class SignalDisplay(unittest.TestCase):
         registry = (ROOT / "custom_components/nspanel_companion/registry.py").read_text()
         self.assertIn('"panel_link"', http)
         self.assertIn("def record_link", registry)
+
+
+class TalkbackCardStyles(unittest.TestCase):
+    """Classes the talkback card uses must be styled, or they render bare."""
+
+    PANEL = ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js"
+
+    def test_notice_variants_exist(self):
+        source = self.PANEL.read_text()
+        used = set(re.findall(r'class="notice \$\{[^}]*\? "([a-z]+)" : "([a-z]+)"', source))
+        flat = {v for pair in used for v in pair}
+        defined = set(re.findall(r"\.notice\.([a-z]+)", source))
+        self.assertTrue(flat, "no conditional notice classes found — the rule has drifted")
+        self.assertEqual(set(), flat - defined - {"plain"},
+                         "notice variants with no stylesheet rule")
+
+    def test_the_test_button_is_wired_to_a_registered_command(self):
+        panel = self.PANEL.read_text()
+        backend = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
+        self.assertIn("talkback-test", panel)
+        self.assertIn("nspanel_companion/talkback/test", panel)
+        self.assertIn("nspanel_companion/talkback/test", backend)
+
+    def test_health_drives_the_status_chip(self):
+        # "Paired" alone said connected all evening while the add-on had
+        # been reinstalled and forgotten us.
+        source = self.PANEL.read_text()
+        self.assertIn("talkback?.health", source)
+        self.assertIn("needs attention", source)

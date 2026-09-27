@@ -212,8 +212,23 @@ async def ws_unpair_updater(hass, connection, msg) -> None:
 @websocket_api.async_response
 @websocket_api.websocket_command({vol.Required("type"): "nspanel_companion/talkback/status"})
 async def ws_talkback_status(hass, connection, msg) -> None:
-    """Whether a talkback add-on is paired, and which one."""
-    connection.send_result(msg["id"], {"paired": _registry(hass).talkback_public()})
+    """Whether a talkback add-on is paired, which one, and whether it works."""
+    registry = _registry(hass)
+    connection.send_result(msg["id"], {
+        "paired": registry.talkback_public(),
+        "health": await registry.async_talkback_health(),
+    })
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({vol.Required("type"): "nspanel_companion/talkback/test"})
+async def ws_test_talkback(hass, connection, msg) -> None:
+    """Play a tone at the door."""
+    try:
+        connection.send_result(msg["id"], await _registry(hass).async_talkback_test_tone())
+    except ValueError as err:
+        connection.send_error(msg["id"], "talkback_test_failed", str(err))
 
 
 @websocket_api.require_admin
@@ -571,6 +586,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_pair_talkback)
     websocket_api.async_register_command(hass, ws_autopair_talkback)
     websocket_api.async_register_command(hass, ws_unpair_talkback)
+    websocket_api.async_register_command(hass, ws_test_talkback)
     websocket_api.async_register_command(hass, ws_pair_updater)
     websocket_api.async_register_command(hass, ws_unpair_updater)
     websocket_api.async_register_command(hass, ws_updater_discover)

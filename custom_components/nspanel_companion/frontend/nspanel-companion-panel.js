@@ -1013,6 +1013,17 @@ class NSPanelCompanionPanel extends HTMLElement {
       }
     }
 
+  async testTalkback() {
+      this.busy = true; this.error = ""; this.talkbackMessage = "Playing a tone at the door…"; this.render();
+      try {
+        const result = await this.call({ type: "nspanel_companion/talkback/test" });
+        this.talkbackMessage = `Played ${result?.seconds ?? "?"}s at the door. If nothing was heard, the fault is past the add-on.`;
+      } catch (error) {
+        this.talkbackMessage = "";
+        this.error = error?.message || "The test failed";
+      } finally { this.busy = false; this.render(); }
+    }
+
   async unpairTalkback() {
       if (!confirm("Unpair the talkback add-on? Panels go back to talking through Scrypted, which is slower.")) return;
       this.busy = true; this.error = ""; this.render();
@@ -1290,6 +1301,7 @@ class NSPanelCompanionPanel extends HTMLElement {
       this.pairTalkback(event.target);
     });
     this.shadowRoot.querySelector("#talkback-unpair")?.addEventListener("click", () => this.unpairTalkback());
+    this.shadowRoot.querySelector("#talkback-test")?.addEventListener("click", () => this.testTalkback());
     this.shadowRoot.querySelectorAll("[data-sound-play]").forEach((button) =>
       button.addEventListener("click", () => this.previewSound(button)));
     this.shadowRoot.querySelector("[data-restart-panel]")?.addEventListener("click", () => this.restartPanel(false));
@@ -1834,7 +1846,10 @@ class NSPanelCompanionPanel extends HTMLElement {
       const paired = this.talkback?.paired;
       const head = `<div class="head"><span class="name">Doorbell talkback</span>
         <span class="what">Low-latency two-way audio to a Reolink doorbell</span><span class="spacer"></span>
-        <span class="status ${paired ? "online" : "offline"}">${paired ? "Talkback add-on connected" : "not set up"}</span></div>`;
+        <span class="status ${!paired ? "offline" : (this.talkback?.health?.reachable && this.talkback?.health?.recognises_us && this.talkback?.health?.camera) ? "online" : "waiting"}">${
+          !paired ? "not set up"
+          : (this.talkback?.health?.reachable && this.talkback?.health?.recognises_us && this.talkback?.health?.camera) ? "Talkback add-on connected"
+          : "needs attention"}</span></div>`;
       if (!paired) {
         return `<section class="service inactive">${head}
           <div class="foot">Optional. Without it panels still talk to the doorbell through Scrypted &mdash; the same audio, two to three seconds later, because the camera's ONVIF path buffers in its firmware. Start the NSPanel Companion Talkback add-on and it connects here on its own.</div>
@@ -1845,12 +1860,18 @@ class NSPanelCompanionPanel extends HTMLElement {
           </form>
           <div class="foot">The six-digit code is printed in the add-on log. The camera's address and a limited camera user go in the add-on's own configuration &mdash; talkback does not need an admin account.</div></section>`;
       }
+      const health = this.talkback?.health || {};
+      const well = health.reachable && health.recognises_us && health.camera;
       return `<section class="service">${head}
-        <div class="foot">Panels send the microphone here, and it reaches the doorbell over the camera's own protocol. Republish a panel's layout to move it onto this path &mdash; and again after re-pairing, since a panel carries the key it was last given. A panel that has not been republished keeps using Scrypted.</div>
+        <div class="foot">Panels send the microphone here, and it reaches the doorbell over the camera's own protocol. Republish a panel's layout to move it onto this path &mdash; and again after re-pairing, since a panel carries the key it was last given. A panel that has not been republished keeps using Scrypted, and one whose add-on stops answering falls back to it on its own.</div>
         <div class="detail">
-          <div class="grow"><span class="notice plain">Connected to ${escapeHtml(String(paired.name || "the talkback add-on"))} at ${escapeHtml(String(paired.base_url || ""))}</span></div>
+          <div class="grow"><span class="notice ${well ? "plain" : "error"}">${well
+            ? `Answering at ${escapeHtml(String(paired.base_url || ""))}, and reaching the camera.`
+            : escapeHtml(String(health.detail || "The add-on is not answering."))}</span></div>
+          <button type="button" class="small" id="talkback-test" ${this.busy ? "disabled" : ""}>${this.busy ? "Working…" : "Test at the door"}</button>
           <button type="button" class="small quiet" id="talkback-unpair" ${this.busy ? "disabled" : ""}>Unpair</button>
-        </div></section>`;
+        </div>
+        ${this.talkbackMessage ? `<div class="detail"><div class="notice plain grow">${escapeHtml(this.talkbackMessage)}</div></div>` : ""}</section>`;
     }
 
   updaterService() {

@@ -290,6 +290,77 @@ class PanelRegistry:
             and str(payload.get("id") or "") == str(self._talkback.get("id") or "")
         )
 
+    async def async_talkback_health(self) -> dict[str, Any]:
+        """Whether the add-on is reachable, ours, and able to reach the camera.
+
+        "Paired" alone was a poor signal: the card said connected all evening
+        while the add-on had been reinstalled and forgotten us. Three
+        separate questions, answered separately, because each fails on its
+        own and each needs a different fix.
+        """
+        health: dict[str, Any] = {
+            "reachable": False, "recognises_us": False, "camera": False, "detail": "",
+        }
+        if not self._talkback:
+            health["detail"] = "No talkback add-on is paired."
+            return health
+        session = async_get_clientsession(self._hass)
+        base = self._talkback["base_url"]
+        try:
+            async with session.get(f"{base}/api/info", timeout=10) as response:
+                info = await response.json()
+            health["reachable"] = True
+        except Exception as err:  # noqa: BLE001 - shown to a person, not raised
+            health["detail"] = f"The add-on did not answer: {err}"
+            return health
+        health["recognises_us"] = (
+            bool(info.get("paired"))
+            and str(info.get("id") or "") == str(self._talkback.get("id") or "")
+        )
+        if not health["recognises_us"]:
+            health["detail"] = (
+                "The add-on has been reinstalled and no longer recognises this "
+                "pairing. Publishing a panel's layout will pair again."
+            )
+            return health
+        try:
+            async with session.get(
+                f"{base}/api/ability",
+                headers={"Authorization": f"Bearer {self._talkback['token']}"},
+                timeout=25,
+            ) as response:
+                ability = await response.json()
+            health["camera"] = response.status == 200 and bool(ability.get("audio_type"))
+            if not health["camera"]:
+                health["detail"] = str(ability.get("error") or "The camera did not answer.")
+        except Exception as err:  # noqa: BLE001
+            health["detail"] = f"The add-on could not reach the camera: {err}"
+        return health
+
+    async def async_talkback_test_tone(self) -> dict[str, Any]:
+        """Play a tone at the door, so "does it work" is one click.
+
+        Synthetic, and with no microphone involved, so silence points at the
+        path rather than at capture, gain, or a quiet room.
+        """
+        if not self._talkback:
+            raise ValueError("No talkback add-on is paired")
+        session = async_get_clientsession(self._hass)
+        try:
+            async with session.post(
+                f"{self._talkback['base_url']}/api/test-tone",
+                headers={"Authorization": f"Bearer {self._talkback['token']}"},
+                timeout=60,
+            ) as response:
+                payload = await response.json()
+                if response.status != 200:
+                    raise ValueError(payload.get("error", "The add-on refused the test"))
+                return payload
+        except ValueError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            raise ValueError(f"Unable to reach the talkback add-on: {err}") from err
+
     async def async_autopair_talkback(self) -> dict[str, Any]:
         """Pair with a talkback add-on running alongside Home Assistant.
 
