@@ -236,13 +236,15 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.error = "";
     this.render();
     try {
-      [this.panels, this.scrypted, this.updater] = await Promise.all([
+      [this.panels, this.scrypted, this.updater, this.talkback] = await Promise.all([
         this.call({ type: "nspanel_companion/panels/list" }),
         this.call({ type: "nspanel_companion/scrypted/list" }),
         this.call({ type: "nspanel_companion/updater/status" }),
+        this.call({ type: "nspanel_companion/talkback/status" }),
       ]);
       this.loaded = true;
       await this.autopairUpdater();
+      await this.autopairTalkback();
     } catch (error) {
       this.error = error?.message || "Unable to load panels";
     } finally {
@@ -431,6 +433,9 @@ class NSPanelCompanionPanel extends HTMLElement {
       hide_accessibility_button: values.get("hide_accessibility_button") === "on",
       wake_on_approach: values.get("wake_on_approach") === "on",
       wake_sensitivity: String(values.get("wake_sensitivity") || "medium"),
+      screen_off_after_seconds: Number(values.get("screen_off_after_seconds") ?? 30),
+      wifi_reconnect_enabled: values.get("wifi_reconnect_enabled") === "on",
+      wifi_reconnect_below_dbm: Number(values.get("wifi_reconnect_below_dbm") ?? -70),
       intercom: {
         enabled: values.get("intercom_enabled") === "on",
         ring: String(values.get("intercom_ring") || "off"),
@@ -852,6 +857,9 @@ class NSPanelCompanionPanel extends HTMLElement {
       hide_accessibility_button: Boolean(this.editor.layout.hide_accessibility_button),
       wake_on_approach: Boolean(this.editor.layout.wake_on_approach),
       wake_sensitivity: String(this.editor.layout.wake_sensitivity || "medium"),
+      screen_off_after_seconds: Number(this.editor.layout.screen_off_after_seconds ?? 30),
+      wifi_reconnect_enabled: Boolean(this.editor.layout.wifi_reconnect_enabled),
+      wifi_reconnect_below_dbm: Number(this.editor.layout.wifi_reconnect_below_dbm ?? -70),
       intercom: { enabled: Boolean(this.editor.layout.intercom?.enabled) },
       theme_mode: this.editor.draftThemeMode,
       theme_dark: this.editor.draftThemeMode === "dark" || this.editor.draftThemeMode === "inherit" && Boolean(this._hass?.themes?.darkMode),
@@ -974,6 +982,43 @@ class NSPanelCompanionPanel extends HTMLElement {
       /* No updater on this host. The manual path stays available. */
     }
   }
+
+  async pairTalkback(form) {
+      const values = new FormData(form);
+      this.busy = true; this.error = ""; this.render();
+      try {
+        await this.call({
+          type: "nspanel_companion/talkback/pair",
+          base_url: String(values.get("base_url") || "").trim(),
+          code: String(values.get("code") || "").trim(),
+        });
+        this.talkback = await this.call({ type: "nspanel_companion/talkback/status" });
+      } catch (error) { this.error = error?.message || "Unable to pair the talkback add-on"; }
+      finally { this.busy = false; this.render(); }
+    }
+
+  async autopairTalkback() {
+      // Same reasoning as the updater: installing the add-on is the request,
+      // and no add-on installed is the normal case rather than an error.
+      if (this._autopairTalkbackTried || this.talkback?.paired) return;
+      this._autopairTalkbackTried = true;
+      try {
+        await this.call({ type: "nspanel_companion/talkback/autopair" });
+        this.talkback = await this.call({ type: "nspanel_companion/talkback/status" });
+      } catch (error) {
+        /* No talkback add-on on this host. The manual path stays available. */
+      }
+    }
+
+  async unpairTalkback() {
+      if (!confirm("Unpair the talkback add-on? Panels go back to talking through Scrypted, which is slower.")) return;
+      this.busy = true; this.error = ""; this.render();
+      try {
+        await this.call({ type: "nspanel_companion/talkback/unpair" });
+        this.talkback = { paired: null };
+      } catch (error) { this.error = error?.message || "Unable to unpair the talkback add-on"; }
+      finally { this.busy = false; this.render(); }
+    }
 
   async unpairUpdater() {
     if (!confirm("Unpair the ADB updater service? No panel apps will be changed.")) return;
@@ -1237,6 +1282,11 @@ class NSPanelCompanionPanel extends HTMLElement {
       event.preventDefault(); this.pairUpdater(event.currentTarget);
     });
     this.shadowRoot.querySelector("#updater-unpair")?.addEventListener("click", () => this.unpairUpdater());
+    this.shadowRoot.querySelector("#talkback-pair")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this.pairTalkback(event.target);
+    });
+    this.shadowRoot.querySelector("#talkback-unpair")?.addEventListener("click", () => this.unpairTalkback());
     this.shadowRoot.querySelectorAll("[data-sound-play]").forEach((button) =>
       button.addEventListener("click", () => this.previewSound(button)));
     this.shadowRoot.querySelector("[data-restart-panel]")?.addEventListener("click", () => this.restartPanel(false));
@@ -1571,6 +1621,27 @@ class NSPanelCompanionPanel extends HTMLElement {
     </div>`;
   }
 
+  /**
+   * A wifi reading as a word and a number.
+   *
+   * Bands rather than a bare figure, because -75 means nothing to most
+   * people and "weak" does. The boundaries match what the panels here
+   * actually read: healthy ones sit near -40, and trouble began at -75 with
+   * packet loss and seconds of delay on anything streaming.
+   */
+  signalLabel(link) {
+    if (!link || typeof link.rssi !== "number") return null;
+    const rssi = link.rssi;
+    const band = rssi >= -55 ? "strong" : rssi >= -67 ? "good" : rssi >= -73 ? "weak" : "poor";
+    return {
+      rssi,
+      band,
+      text: `${rssi} dBm`,
+      title: [link.ssid, link.bssid, link.link_speed_mbps ? `${link.link_speed_mbps} Mbps` : ""]
+        .filter(Boolean).join(" · "),
+    };
+  }
+
   panelCard(panel) {
     const online = !panel.revoked && panel.last_seen && Date.now() - new Date(panel.last_seen).getTime() < 45000;
     const known = panel.page_count !== undefined;
@@ -1586,6 +1657,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     const metrics = `<div class="metrics">
       <div><span class="t-label">Pages</span><b class="${known ? "" : "none"}">${known ? pageCount : "—"}</b></div>
       <div><span class="t-label">Last seen</span><b class="${panel.last_seen ? "" : "none"}">${panel.last_seen ? escapeHtml(sinceLabel(panel.last_seen)) : "—"}</b></div>
+      ${(() => { const sig = this.signalLabel(panel.link); return `<div><span class="t-label">Signal</span><b class="${sig ? `sig-${sig.band}` : "none"}" title="${sig ? escapeHtml(sig.title) : ""}">${sig ? escapeHtml(sig.text) : "—"}</b></div>`; })()}
       <div class="wide"><span class="t-label">Revision</span>
         <b class="id ${revision ? "" : "none"}" title="${escapeHtml(revision)}">${revision ? escapeHtml(revision) : "—"}</b></div>
     </div>`;
@@ -1703,6 +1775,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         <div class="page-head"><div><h1 class="t-page">Integrations</h1><p>Optional services. Pair once — panels pick the change up on their next sync.</p></div></div>
         ${this.scryptedService()}
         ${this.updaterService()}
+        ${this.talkbackService()}
       </main>`;
   }
 
@@ -1753,6 +1826,29 @@ class NSPanelCompanionPanel extends HTMLElement {
       ${latest.url ? `<a class="small" href="${escapeHtml(latest.url)}" target="_blank" rel="noreferrer">Release notes</a>` : ""}
     </div>`;
   }
+
+  talkbackService() {
+      const paired = this.talkback?.paired;
+      const head = `<div class="head"><span class="name">Doorbell talkback</span>
+        <span class="what">Low-latency two-way audio to a Reolink doorbell</span><span class="spacer"></span>
+        <span class="status ${paired ? "online" : "offline"}">${paired ? "Talkback add-on connected" : "not set up"}</span></div>`;
+      if (!paired) {
+        return `<section class="service inactive">${head}
+          <div class="foot">Optional. Without it panels still talk to the doorbell through Scrypted &mdash; the same audio, two to three seconds later, because the camera's ONVIF path buffers in its firmware. Start the NSPanel Companion Talkback add-on and it connects here on its own.</div>
+          <form class="detail" id="talkback-pair">
+            <div class="grow"><input name="base_url" placeholder="http://homeassistant.local:8099" value=""></div>
+            <input name="code" class="mono" style="flex:0 0 120px" inputmode="numeric" maxlength="6" placeholder="000000" aria-label="Pairing code">
+            <button class="small primary" ${this.busy ? "disabled" : ""}>Pair</button>
+          </form>
+          <div class="foot">The six-digit code is printed in the add-on log. The camera's address and a limited camera user go in the add-on's own configuration &mdash; talkback does not need an admin account.</div></section>`;
+      }
+      return `<section class="service">${head}
+        <div class="foot">Panels send the microphone here, and it reaches the doorbell over the camera's own protocol. Republish a panel's layout to move it onto this path; a panel that has not been republished keeps using Scrypted.</div>
+        <div class="detail">
+          <div class="grow"><span class="notice plain">Connected to ${escapeHtml(String(paired.name || "the talkback add-on"))} at ${escapeHtml(String(paired.base_url || ""))}</span></div>
+          ${paired.source === "manual" ? `<button type="button" class="small quiet" id="talkback-unpair" ${this.busy ? "disabled" : ""}>Unpair</button>` : ""}
+        </div></section>`;
+    }
 
   updaterService() {
     const paired = this.updater?.paired;
@@ -2802,6 +2898,13 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .panel-card .metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:14px 0; border-top:1px solid var(--line); padding-top:14px; }
 .panel-card .metrics > * { min-width:0; }
 .panel-card .metrics b { display:block; font:700 20px/1 var(--font); margin-top:4px; }
+/* A signal reading is only useful if a weak one looks weak. The bands match
+   what the panels here read: healthy around -40, trouble from -75. Uses the
+   tokens the rest of the page already defines, so it follows the theme. */
+.panel-card .metrics b.sig-strong,
+.panel-card .metrics b.sig-good { color:var(--ok); }
+.panel-card .metrics b.sig-weak { color:var(--pending); }
+.panel-card .metrics b.sig-poor { color:var(--danger); }
 
 /* An identifier is not a reading. Revisions, panel ids, tokens and
    entity ids are unbounded strings the user reads character by

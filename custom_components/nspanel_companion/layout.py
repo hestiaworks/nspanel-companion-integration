@@ -268,6 +268,12 @@ def validate_layout(value: Any) -> dict[str, Any]:
         stream_name = str(doorbell.get("stream_name", "")).strip()
         talkback_url = str(doorbell.get("talkback_url", "")).strip().rstrip("/")
         talkback_key = str(doorbell.get("talkback_key", "")).strip()
+        # Where the microphone goes, when that is somewhere other than where
+        # the video URL is resolved. The talkback endpoint serves both jobs
+        # today; a talkback add-on takes over only the audio, and leaving
+        # talkback_url alone is what keeps video working.
+        talk_url = str(doorbell.get("talk_url", "")).strip().rstrip("/")
+        talk_key = str(doorbell.get("talk_key", "")).strip()
         scrypted_bridge_id = str(doorbell.get("scrypted_bridge_id", "")).strip()
         scrypted_doorbell_id = str(doorbell.get("scrypted_doorbell_id", "")).strip()
         if trigger_entity_id and not ENTITY_ID.fullmatch(trigger_entity_id):
@@ -280,6 +286,10 @@ def validate_layout(value: Any) -> dict[str, Any]:
             raise ValueError("Doorbell talkback URL must use HTTP or HTTPS")
         if talkback_key and len(talkback_key) < 16:
             raise ValueError("Doorbell talkback key must contain at least 16 characters")
+        if talk_url and not talk_url.startswith(("http://", "https://")):
+            raise ValueError("Doorbell talk URL must use HTTP or HTTPS")
+        if talk_key and len(talk_key) < 16:
+            raise ValueError("Doorbell talk key must contain at least 16 characters")
         auto_close_ms = int(doorbell.get("auto_close_ms", 60000))
         if not 10000 <= auto_close_ms <= 300000:
             raise ValueError("Doorbell timeout must be 10–300 seconds")
@@ -304,6 +314,8 @@ def validate_layout(value: Any) -> dict[str, Any]:
             "stream_name": stream_name,
             "talkback_url": talkback_url,
             "talkback_key": talkback_key,
+            "talk_url": talk_url,
+            "talk_key": talk_key,
             "scrypted_bridge_id": scrypted_bridge_id,
             "scrypted_doorbell_id": scrypted_doorbell_id,
             "quiet_mode": bool(doorbell.get("quiet_mode", False)),

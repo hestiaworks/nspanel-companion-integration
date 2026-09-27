@@ -283,6 +283,8 @@ class PanelWebSocketView(HomeAssistantView):
                         "stream_name": doorbell_config.get("stream_name", ""),
                         "talkback_url": doorbell_config.get("talkback_url", ""),
                         "talkback_key": doorbell_config.get("talkback_key", ""),
+                        "talk_url": doorbell_config.get("talk_url", ""),
+                        "talk_key": doorbell_config.get("talk_key", ""),
                         "quiet_mode": doorbell_config.get("quiet_mode", False),
                         "chime": doorbell_config.get("chime", "off"),
                         "chime_volume": doorbell_config.get("chime_volume", 70),
@@ -446,6 +448,12 @@ class PanelWebSocketView(HomeAssistantView):
                             str(data.get("message", ""))[:160],
                             level if level in {"info", "warn", "error"} else "info",
                         )
+                        continue
+                    if data.get("type") == "panel_link":
+                        # What the panel's radio currently sees. Held in
+                        # memory and shown in the admin list, because a weak
+                        # link masquerades as several unrelated faults.
+                        registry.record_link(panel_id, data)
                         continue
                     if data.get("type") == "history_request":
                         await send_history(

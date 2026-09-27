@@ -122,9 +122,11 @@ class FrontendContractTest(unittest.TestCase):
 
     def test_admin_websocket_commands_use_current_ha_decorator(self):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
-        # 25 since scrypted/assign went: publishing a layout is one command,
-        # and the doorbell's Scrypted credentials are filled in as it saves.
-        self.assertEqual(25, source.count("@websocket_api.require_admin"))
+        # 29: the 25 that remained after scrypted/assign went — publishing a
+        # layout is one command, and the doorbell's Scrypted credentials are
+        # filled in as it saves — plus four for the talkback add-on, which is
+        # paired, unpaired and asked about exactly like the updater.
+        self.assertEqual(29, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
         self.assertIn('{"nspanel-companion", "probable-nspanel"}', source)
         self.assertIn('device.get("adb_state") == "device"', source)
@@ -284,3 +286,111 @@ class TemplateScopeTest(unittest.TestCase):
                 offenders.append(f"{current}() line {number}")
         self.assertEqual([], offenders, "bare layout. with no local layout")
 
+
+
+class SettingsAreActuallySaved(unittest.TestCase):
+    """Every control in the settings form must be read back and published.
+
+    Three settings shipped in 0.61.0 with an input, a default and backend
+    validation, but no line in either the form collector or the publish
+    payload. They rendered, they accepted a value, and the value went
+    nowhere — the toggle simply sprang back. Nothing failed, because
+    nothing ran.
+    """
+
+    PANEL = ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js"
+
+    def _names_in(self, css_class: str) -> set:
+        source = self.PANEL.read_text()
+        start = source.index(f'<fieldset class="{css_class}"')
+        end = source.index("</fieldset>", start)
+        block = source[start:end]
+        # Sliders render their own input, so take their key as the name too.
+        names = set(re.findall(r'name="([a-z0-9_]+)"', block))
+        names |= set(re.findall(r'brightnessSlider\("([a-z0-9_]+)"', block))
+        return names
+
+    def test_every_display_control_is_collected_and_published(self):
+        source = self.PANEL.read_text()
+        missing = []
+        for name in sorted(self._names_in("display")):
+            if f'values.get("{name}")' not in source:
+                missing.append(f"{name}: never read from the form")
+            elif f"this.editor.layout.{name}" not in source:
+                missing.append(f"{name}: read but never published")
+        self.assertEqual([], missing, "settings that would silently not save")
+
+    def test_every_network_control_is_collected_and_published(self):
+        source = self.PANEL.read_text()
+        missing = []
+        for name in sorted(self._names_in("network")):
+            if f'values.get("{name}")' not in source:
+                missing.append(f"{name}: never read from the form")
+            elif f"this.editor.layout.{name}" not in source:
+                missing.append(f"{name}: read but never published")
+        self.assertEqual([], missing, "settings that would silently not save")
+
+
+class FrontendCallsCommandsThatExist(unittest.TestCase):
+    """Every websocket command the panel calls must be registered.
+
+    A mistyped command name fails only when a person clicks the thing, with
+    an error that names the type rather than the mistake.
+    """
+
+    def test_no_command_is_called_that_the_backend_does_not_serve(self):
+        panel = (ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js").read_text()
+        backend = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
+        called = set(re.findall(r'type: "(nspanel_companion/[a-z_/]+)"', panel))
+        served = set(re.findall(r'"(nspanel_companion/[a-z_/]+)"', backend))
+        self.assertTrue(called, "found no commands in the panel — the regex has drifted")
+        self.assertEqual(set(), called - served,
+                         "the panel calls commands the backend does not register")
+
+    def test_the_talkback_commands_are_wired_end_to_end(self):
+        panel = (ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js").read_text()
+        backend = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
+        for verb in ("status", "pair", "autopair", "unpair"):
+            command = f"nspanel_companion/talkback/{verb}"
+            self.assertIn(command, panel, f"{command} is never called by the panel")
+            self.assertIn(command, backend, f"{command} is not registered")
+
+    def test_every_registered_command_has_its_handler_registered(self):
+        backend = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
+        defined = set(re.findall(r"^async def (ws_[a-z_]+)\(", backend, re.M))
+        registered = set(re.findall(r"async_register_command\(hass, (ws_[a-z_]+)\)", backend))
+        self.assertEqual(set(), defined - registered,
+                         "handlers that exist but are never registered would never be callable")
+
+
+class SignalDisplay(unittest.TestCase):
+    """The panel list shows each panel's wifi signal.
+
+    A weak link does not present as a weak link: it presented here as video
+    taking sixteen seconds, talkback four seconds late, and timeouts against
+    a service that was plainly up. One panel at -79 beside two at -40 was
+    the whole diagnosis, and nothing surfaced it.
+    """
+
+    PANEL = ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js"
+
+    def test_the_card_renders_a_signal(self):
+        source = self.PANEL.read_text()
+        self.assertIn("signalLabel(", source)
+        self.assertIn("panel.link", source)
+
+    def test_signal_colours_use_tokens_the_theme_defines(self):
+        # A var() with no definition and no fallback renders as nothing,
+        # which reads as "no signal reported" rather than as a styling bug.
+        source = self.PANEL.read_text()
+        defined = set(re.findall(r"(--[a-z-]+)\s*:\s*#", source))
+        used = set(re.findall(r"\.sig-[a-z]+ \{ color:var\((--[a-z-]+)\)", source))
+        self.assertTrue(used, "no signal colours found — the rule has drifted")
+        self.assertEqual(set(), used - defined,
+                         "signal colours reference undefined theme tokens")
+
+    def test_the_backend_accepts_what_the_panel_sends(self):
+        http = (ROOT / "custom_components/nspanel_companion/http.py").read_text()
+        registry = (ROOT / "custom_components/nspanel_companion/registry.py").read_text()
+        self.assertIn('"panel_link"', http)
+        self.assertIn("def record_link", registry)

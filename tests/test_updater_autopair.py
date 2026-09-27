@@ -57,6 +57,9 @@ class FakeSession:
 
 def make_registry(session: FakeSession) -> PanelRegistry:
     registry = PanelRegistry.__new__(PanelRegistry)
+    # __init__ is bypassed here; the talk endpoint reads this.
+    registry._talkback = None
+    registry._links = {}
     registry._hass = object()
     registry._updater = None
     registry._save = AsyncMock()

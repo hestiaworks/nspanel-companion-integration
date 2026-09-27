@@ -210,6 +210,50 @@ async def ws_unpair_updater(hass, connection, msg) -> None:
 
 @websocket_api.require_admin
 @websocket_api.async_response
+@websocket_api.websocket_command({vol.Required("type"): "nspanel_companion/talkback/status"})
+async def ws_talkback_status(hass, connection, msg) -> None:
+    """Whether a talkback add-on is paired, and which one."""
+    connection.send_result(msg["id"], {"paired": _registry(hass).talkback_public()})
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({
+    vol.Required("type"): "nspanel_companion/talkback/pair",
+    vol.Required("base_url"): str,
+    vol.Required("code"): str,
+})
+async def ws_pair_talkback(hass, connection, msg) -> None:
+    try:
+        connection.send_result(msg["id"], await _registry(hass).async_pair_talkback(
+            msg["base_url"], msg["code"],
+        ))
+    except ValueError as err:
+        connection.send_error(msg["id"], "talkback_pairing_failed", str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({vol.Required("type"): "nspanel_companion/talkback/autopair"})
+async def ws_autopair_talkback(hass, connection, msg) -> None:
+    """Pair a talkback add-on on this host, without a copied code."""
+    try:
+        connection.send_result(msg["id"], await _registry(hass).async_autopair_talkback())
+    except ValueError as err:
+        connection.send_error(msg["id"], "talkback_pairing_failed", str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({vol.Required("type"): "nspanel_companion/talkback/unpair"})
+async def ws_unpair_talkback(hass, connection, msg) -> None:
+    """Forget it. Panels go back to talking through Scrypted, slower."""
+    await _registry(hass).async_unpair_talkback()
+    connection.send_result(msg["id"], {"unpaired": True})
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
 @websocket_api.websocket_command({
     vol.Required("type"): "nspanel_companion/updater/discover",
     vol.Required("subnet"): str,
@@ -523,6 +567,10 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_connect_discovered_panel)
     websocket_api.async_register_command(hass, ws_updater_status)
     websocket_api.async_register_command(hass, ws_autopair_updater)
+    websocket_api.async_register_command(hass, ws_talkback_status)
+    websocket_api.async_register_command(hass, ws_pair_talkback)
+    websocket_api.async_register_command(hass, ws_autopair_talkback)
+    websocket_api.async_register_command(hass, ws_unpair_talkback)
     websocket_api.async_register_command(hass, ws_pair_updater)
     websocket_api.async_register_command(hass, ws_unpair_updater)
     websocket_api.async_register_command(hass, ws_updater_discover)
