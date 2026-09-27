@@ -25,7 +25,17 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import test_registry  # noqa: E402,F401  - installs the Home Assistant stubs
 
-PanelRegistry = sys.modules["nspanel_companion.registry"].PanelRegistry
+# _talk_endpoint asks Home Assistant where it lives, so panels are given an
+# address they can actually reach. Stubbed here rather than in test_registry
+# because this is the only suite that exercises it.
+network = types.ModuleType("homeassistant.helpers.network")
+network.get_url = lambda *_a, **_k: "http://192.0.2.76:8123"
+sys.modules.setdefault("homeassistant.helpers.network", network)
+sys.modules["homeassistant.helpers"].network = network
+
+registry_module = sys.modules["nspanel_companion.registry"]
+PanelRegistry = registry_module.PanelRegistry
+panel_talk_base_url = registry_module.panel_talk_base_url
 
 PATH = Path(__file__).parents[1] / "custom_components/nspanel_companion/layout.py"
 SPEC = spec_from_file_location("nspanel_layout_talkback", PATH)
@@ -39,6 +49,7 @@ class TalkEndpoint(unittest.TestCase):
     def registry(self, talkback=None):
         registry = PanelRegistry.__new__(PanelRegistry)
         registry._talkback = talkback
+        registry._hass = None
         return registry
 
     def test_no_add_on_means_no_talk_endpoint(self):
@@ -47,11 +58,71 @@ class TalkEndpoint(unittest.TestCase):
 
     def test_a_paired_add_on_supplies_url_and_key(self):
         registry = self.registry({
-            "base_url": "http://192.0.2.5:8099", "token": "a-token-of-real-length",
+            "base_url": "http://192.0.2.5:8099", "source": "manual",
+            "token": "a-token-of-real-length",
         })
         url, key = registry._talk_endpoint()
         self.assertEqual("http://192.0.2.5:8099/api/talk", url)
         self.assertEqual("a-token-of-real-length", key)
+
+    def test_an_autopaired_add_on_is_published_at_the_home_assistant_host(self):
+        """What the panel is told, when pairing went over loopback."""
+        registry = self.registry({
+            "base_url": "http://127.0.0.1:8099", "source": "local",
+            "token": "a-token-of-real-length",
+        })
+        url, _key = registry._talk_endpoint()
+        self.assertEqual("http://192.0.2.76:8099/api/talk", url)
+
+
+class PanelReachableUrl(unittest.TestCase):
+    """A panel is a different machine from Home Assistant.
+
+    Autopairing goes over loopback, because answering there is what proves
+    the add-on is the local one. Publishing that same address to a panel
+    would point it at itself — the exact trap the Scrypted plugin's README
+    warns about, and silent, because the POST simply goes nowhere.
+    """
+
+    def test_a_loopback_pairing_is_rewritten_to_the_home_assistant_host(self):
+        self.assertEqual(
+            "http://192.0.2.76:8099",
+            panel_talk_base_url("http://127.0.0.1:8099", "local", "http://192.0.2.76:8123"),
+        )
+
+    def test_the_paired_port_is_kept_not_the_home_assistant_one(self):
+        self.assertEqual(
+            "http://192.0.2.76:9001",
+            panel_talk_base_url("http://127.0.0.1:9001", "local", "http://192.0.2.76:8123"),
+        )
+
+    def test_it_stays_http_even_behind_tls(self):
+        # The add-on serves plain HTTP wherever Home Assistant sits.
+        self.assertEqual(
+            "http://ha.example.com:8099",
+            panel_talk_base_url("http://127.0.0.1:8099", "local", "https://ha.example.com"),
+        )
+
+    def test_localhost_is_rewritten_too(self):
+        self.assertEqual(
+            "http://192.0.2.76:8099",
+            panel_talk_base_url("http://localhost:8099", "local", "http://192.0.2.76:8123"),
+        )
+
+    def test_an_add_on_paired_by_hand_is_left_alone(self):
+        # Already a real address; nobody typed 127.0.0.1 by accident.
+        self.assertEqual(
+            "http://192.0.2.50:8099",
+            panel_talk_base_url("http://192.0.2.50:8099", "manual", "http://192.0.2.76:8123"),
+        )
+
+    def test_an_unusable_home_assistant_url_leaves_the_original(self):
+        # Better the loopback address than an empty one: at least the
+        # failure is visible rather than a malformed URL.
+        self.assertEqual(
+            "http://127.0.0.1:8099",
+            panel_talk_base_url("http://127.0.0.1:8099", "local", "not-a-url"),
+        )
 
 
 class Injection(unittest.IsolatedAsyncioTestCase):
@@ -60,6 +131,7 @@ class Injection(unittest.IsolatedAsyncioTestCase):
     def registry(self, talkback=None):
         registry = PanelRegistry.__new__(PanelRegistry)
         registry._talkback = talkback
+        registry._hass = None
         registry.async_scrypted_doorbells = AsyncMock(return_value=[{
             "id": "44", "name": "Front door",
             "talkback_url": "http://192.0.2.9:11081/talk/44",
@@ -74,7 +146,8 @@ class Injection(unittest.IsolatedAsyncioTestCase):
 
     async def test_camera_widgets_are_given_the_talk_endpoint(self):
         registry = self.registry({
-            "base_url": "http://192.0.2.5:8099", "token": "a-token-of-real-length",
+            "base_url": "http://192.0.2.5:8099", "source": "manual",
+            "token": "a-token-of-real-length",
         })
         hydrated = await registry._hydrate_camera_widgets(self.layout(), {})
         widget = hydrated["pages"][0]["widgets"][0]
@@ -89,7 +162,8 @@ class Injection(unittest.IsolatedAsyncioTestCase):
         pointing it elsewhere breaks video silently.
         """
         registry = self.registry({
-            "base_url": "http://192.0.2.5:8099", "token": "a-token-of-real-length",
+            "base_url": "http://192.0.2.5:8099", "source": "manual",
+            "token": "a-token-of-real-length",
         })
         hydrated = await registry._hydrate_camera_widgets(self.layout(), {})
         widget = hydrated["pages"][0]["widgets"][0]

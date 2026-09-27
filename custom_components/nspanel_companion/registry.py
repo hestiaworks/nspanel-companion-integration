@@ -6,6 +6,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 import hashlib
 import re
+from urllib.parse import urlparse
 import secrets
 import time
 from typing import Any
@@ -49,6 +50,28 @@ def behind_release(panels: list[dict[str, Any]], version: str) -> list[dict[str,
         panel for panel in panels
         if panel.get("app_version") and str(panel["app_version"]) != version
     ]
+
+
+def panel_talk_base_url(base_url: str, source: str, ha_url: str) -> str:
+    """Where a *panel* can reach the talkback add-on.
+
+    Autopairing happens over loopback, because answering there is what
+    proves an add-on is the local one. But 127.0.0.1 is Home Assistant's
+    route to it, not a panel's — on a panel that address means the panel
+    itself, and the audio would go nowhere at all.
+
+    The add-on shares the host's network, so it is reachable wherever Home
+    Assistant is, on the port it was paired on. An add-on paired by hand at
+    a real address is already reachable and is left alone.
+
+    Always http: the add-on serves plain HTTP even where Home Assistant is
+    behind TLS.
+    """
+    if source != "local":
+        return base_url
+    port = urlparse(base_url).port or 8099
+    host = urlparse(ha_url).hostname
+    return f"http://{host}:{port}" if host else base_url
 
 
 class PanelRegistry:
@@ -270,7 +293,13 @@ class PanelRegistry:
         """
         if not self._talkback:
             return "", ""
-        return f"{self._talkback['base_url']}/api/talk", str(self._talkback["token"])
+        from homeassistant.helpers.network import get_url
+
+        ha_url = get_url(self._hass, allow_internal=True, prefer_external=False)
+        base = panel_talk_base_url(
+            str(self._talkback["base_url"]), str(self._talkback.get("source", "")), ha_url,
+        )
+        return f"{base}/api/talk", str(self._talkback["token"])
 
     def release_public(self) -> dict[str, Any]:
         """The published release as last reported, and who is not on it."""
