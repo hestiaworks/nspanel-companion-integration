@@ -288,3 +288,47 @@ class StalePairing(unittest.IsolatedAsyncioTestCase):
     async def test_nothing_paired_is_not_live(self):
         registry = self.registry(None, {})
         self.assertFalse(await registry.async_talkback_is_live())
+
+
+class PublishRepairsAStalePairing(unittest.IsolatedAsyncioTestCase):
+    """Saving a layout is what a person tries when talkback stops.
+
+    Leaving the re-pair to the admin page meant a stale pairing survived for
+    as long as nobody loaded that page with a fresh browser cache — and the
+    panel went on being handed a token the add-on had never seen.
+    """
+
+    async def test_a_live_pairing_is_not_disturbed(self):
+        registry = PanelRegistry.__new__(PanelRegistry)
+        registry._talkback = {"id": "abc", "base_url": "http://127.0.0.1:8099", "token": "t" * 32}
+        calls = []
+        async def live():
+            calls.append("checked")
+            return True
+        async def autopair():
+            calls.append("re-paired")
+            return {}
+        registry.async_talkback_is_live = live
+        registry.async_autopair_talkback = autopair
+        await registry.async_ensure_talkback()
+        self.assertEqual(["checked"], calls)
+
+    async def test_a_dead_pairing_is_renewed(self):
+        registry = PanelRegistry.__new__(PanelRegistry)
+        registry._talkback = {"id": "abc", "base_url": "http://127.0.0.1:8099", "token": "t" * 32}
+        calls = []
+        async def live():
+            calls.append("checked")
+            return False
+        async def autopair():
+            calls.append("re-paired")
+            return {}
+        registry.async_talkback_is_live = live
+        registry.async_autopair_talkback = autopair
+        await registry.async_ensure_talkback()
+        self.assertEqual(["checked", "re-paired"], calls)
+
+    async def test_nothing_paired_needs_no_check(self):
+        registry = PanelRegistry.__new__(PanelRegistry)
+        registry._talkback = None
+        await registry.async_ensure_talkback()   # must not raise

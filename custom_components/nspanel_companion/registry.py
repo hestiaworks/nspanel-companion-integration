@@ -710,7 +710,24 @@ class PanelRegistry:
             await socket.send_json({"type": "revoked"})
             await socket.close()
 
+    async def async_ensure_talkback(self) -> None:
+        """Re-pair before handing a panel a credential, if ours is dead.
+
+        Relying on the admin page to notice meant a stale pairing survived
+        for as long as nobody loaded that page with a fresh browser cache,
+        and the panel went on presenting a token nothing recognised. The
+        moment a layout is published is the moment the credential matters,
+        so it is checked here instead.
+        """
+        if not self._talkback:
+            return
+        if await self.async_talkback_is_live():
+            return
+        with suppress(ValueError):
+            await self.async_autopair_talkback()
+
     async def async_set_layout(self, panel_id: str, layout: dict[str, Any]) -> dict[str, Any]:
+        await self.async_ensure_talkback()
         record = self._require(panel_id)
         existing_doorbell = dict((record.get("layout") or {}).get("doorbell") or {})
         layout = await self._hydrate_camera_widgets(layout, existing_doorbell)
