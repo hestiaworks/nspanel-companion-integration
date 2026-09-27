@@ -1000,7 +1000,10 @@ class NSPanelCompanionPanel extends HTMLElement {
   async autopairTalkback() {
       // Same reasoning as the updater: installing the add-on is the request,
       // and no add-on installed is the normal case rather than an error.
-      if (this._autopairTalkbackTried || this.talkback?.paired) return;
+      // Called even when we believe we are paired: an add-on reinstalled
+      // from somewhere else has a new identity and has forgotten ours, and
+      // the backend re-pairs only when that is actually the case.
+      if (this._autopairTalkbackTried) return;
       this._autopairTalkbackTried = true;
       try {
         await this.call({ type: "nspanel_companion/talkback/autopair" });
@@ -1843,10 +1846,10 @@ class NSPanelCompanionPanel extends HTMLElement {
           <div class="foot">The six-digit code is printed in the add-on log. The camera's address and a limited camera user go in the add-on's own configuration &mdash; talkback does not need an admin account.</div></section>`;
       }
       return `<section class="service">${head}
-        <div class="foot">Panels send the microphone here, and it reaches the doorbell over the camera's own protocol. Republish a panel's layout to move it onto this path; a panel that has not been republished keeps using Scrypted.</div>
+        <div class="foot">Panels send the microphone here, and it reaches the doorbell over the camera's own protocol. Republish a panel's layout to move it onto this path &mdash; and again after re-pairing, since a panel carries the key it was last given. A panel that has not been republished keeps using Scrypted.</div>
         <div class="detail">
           <div class="grow"><span class="notice plain">Connected to ${escapeHtml(String(paired.name || "the talkback add-on"))} at ${escapeHtml(String(paired.base_url || ""))}</span></div>
-          ${paired.source === "manual" ? `<button type="button" class="small quiet" id="talkback-unpair" ${this.busy ? "disabled" : ""}>Unpair</button>` : ""}
+          <button type="button" class="small quiet" id="talkback-unpair" ${this.busy ? "disabled" : ""}>Unpair</button>
         </div></section>`;
     }
 

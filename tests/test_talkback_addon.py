@@ -235,3 +235,56 @@ class LayoutValidation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StalePairing(unittest.IsolatedAsyncioTestCase):
+    """An add-on reinstalled elsewhere forgets us, and says nothing.
+
+    It keeps its own copy of the token in /data. Reinstalling it — from a
+    local folder to the repository, say — issues a new identity. Home
+    Assistant goes on believing it is paired, panels go on presenting a
+    credential nothing recognises, and talkback fails with a 401 that
+    surfaces nowhere.
+    """
+
+    def registry(self, talkback, info):
+        registry = PanelRegistry.__new__(PanelRegistry)
+        registry._talkback = talkback
+        registry._links = {}
+        registry._hass = None
+
+        class Response:
+            status = 200
+            async def json(self_inner):
+                return info
+            async def __aenter__(self_inner):
+                return self_inner
+            async def __aexit__(self_inner, *_exc):
+                return False
+
+        class Session:
+            def get(self_inner, *_a, **_k):
+                return Response()
+
+        import sys
+        sys.modules["nspanel_companion.registry"].async_get_clientsession = lambda _h: Session()
+        return registry
+
+    PAIRED = {"id": "abc123", "base_url": "http://127.0.0.1:8099", "token": "t" * 32}
+
+    async def test_a_matching_identity_is_left_alone(self):
+        registry = self.registry(self.PAIRED, {"id": "abc123", "paired": True})
+        self.assertTrue(await registry.async_talkback_is_live())
+
+    async def test_a_new_identity_is_a_stale_pairing(self):
+        # Reinstalled: same address, different add-on.
+        registry = self.registry(self.PAIRED, {"id": "different", "paired": True})
+        self.assertFalse(await registry.async_talkback_is_live())
+
+    async def test_an_add_on_that_forgot_us_is_a_stale_pairing(self):
+        registry = self.registry(self.PAIRED, {"id": "abc123", "paired": False})
+        self.assertFalse(await registry.async_talkback_is_live())
+
+    async def test_nothing_paired_is_not_live(self):
+        registry = self.registry(None, {})
+        self.assertFalse(await registry.async_talkback_is_live())

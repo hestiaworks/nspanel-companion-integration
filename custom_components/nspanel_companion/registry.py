@@ -266,8 +266,38 @@ class PanelRegistry:
         await self._save()
         return self.talkback_public() or {}
 
+    async def async_talkback_is_live(self) -> bool:
+        """Whether the add-on still recognises the pairing we hold.
+
+        An add-on keeps its own copy of the token in /data, so reinstalling
+        it — from a local folder to the repository, say — issues a new
+        identity and forgets ours. Home Assistant goes on believing it is
+        paired, panels go on presenting a credential nothing recognises, and
+        talkback fails with a 401 nobody sees.
+        """
+        if not self._talkback:
+            return False
+        session = async_get_clientsession(self._hass)
+        try:
+            async with session.get(f"{self._talkback['base_url']}/api/info", timeout=10) as response:
+                if response.status != 200:
+                    return True          # reachable but unhappy: not our call
+                payload = await response.json()
+        except Exception:  # noqa: BLE001 - a stopped add-on is not a stale pairing
+            return True
+        return (
+            bool(payload.get("paired"))
+            and str(payload.get("id") or "") == str(self._talkback.get("id") or "")
+        )
+
     async def async_autopair_talkback(self) -> dict[str, Any]:
-        """Pair with a talkback add-on running alongside Home Assistant."""
+        """Pair with a talkback add-on running alongside Home Assistant.
+
+        Safe to call when already paired: it re-pairs only when the add-on
+        no longer recognises what we hold.
+        """
+        if self._talkback and await self.async_talkback_is_live():
+            return self.talkback_public() or {}
         session = async_get_clientsession(self._hass)
         for base_url in LOOPBACK_TALKBACK_URLS:
             try:
