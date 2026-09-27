@@ -51,6 +51,7 @@ def make_registry(session) -> PanelRegistry:
     registry = PanelRegistry.__new__(PanelRegistry)
     # __init__ is bypassed here; the talk endpoint reads this.
     registry._talkback = None
+    registry._links = {}
     registry._hass = object()
     registry._panels = {}
     registry._scrypted_bridges = {STALE_BRIDGE["id"]: dict(STALE_BRIDGE)}

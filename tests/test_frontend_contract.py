@@ -361,3 +361,36 @@ class FrontendCallsCommandsThatExist(unittest.TestCase):
         registered = set(re.findall(r"async_register_command\(hass, (ws_[a-z_]+)\)", backend))
         self.assertEqual(set(), defined - registered,
                          "handlers that exist but are never registered would never be callable")
+
+
+class SignalDisplay(unittest.TestCase):
+    """The panel list shows each panel's wifi signal.
+
+    A weak link does not present as a weak link: it presented here as video
+    taking sixteen seconds, talkback four seconds late, and timeouts against
+    a service that was plainly up. One panel at -79 beside two at -40 was
+    the whole diagnosis, and nothing surfaced it.
+    """
+
+    PANEL = ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js"
+
+    def test_the_card_renders_a_signal(self):
+        source = self.PANEL.read_text()
+        self.assertIn("signalLabel(", source)
+        self.assertIn("panel.link", source)
+
+    def test_signal_colours_use_tokens_the_theme_defines(self):
+        # A var() with no definition and no fallback renders as nothing,
+        # which reads as "no signal reported" rather than as a styling bug.
+        source = self.PANEL.read_text()
+        defined = set(re.findall(r"(--[a-z-]+)\s*:\s*#", source))
+        used = set(re.findall(r"\.sig-[a-z]+ \{ color:var\((--[a-z-]+)\)", source))
+        self.assertTrue(used, "no signal colours found — the rule has drifted")
+        self.assertEqual(set(), used - defined,
+                         "signal colours reference undefined theme tokens")
+
+    def test_the_backend_accepts_what_the_panel_sends(self):
+        http = (ROOT / "custom_components/nspanel_companion/http.py").read_text()
+        registry = (ROOT / "custom_components/nspanel_companion/registry.py").read_text()
+        self.assertIn('"panel_link"', http)
+        self.assertIn("def record_link", registry)

@@ -102,6 +102,11 @@ class PanelRegistry:
         #: admin page turning into a retry loop against a stopped add-on.
         self._release_attempt = 0.0
         self._settings: dict[str, Any] = {"passive_panel_discovery": False}
+        #: The last wifi reading each panel reported, in memory only. It is a
+        #: live fact about a radio link, so a value that outlived a restart
+        #: would be worse than none — and writing it to storage every half
+        #: minute would churn the disk for nothing.
+        self._links: dict[str, dict[str, Any]] = {}
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
@@ -509,7 +514,33 @@ class PanelRegistry:
         return {"unpaired": True, "cleared_panels": cleared_panels, "warning": warning}
 
     def list_public(self) -> list[dict[str, Any]]:
-        return [self._public(item) for item in sorted(self._panels.values(), key=lambda item: item["name"].lower())]
+        return [
+            {**self._public(item), "link": self._links.get(item["panel_id"])}
+            for item in sorted(self._panels.values(), key=lambda item: item["name"].lower())
+        ]
+
+    def record_link(self, panel_id: str, reading: dict[str, Any]) -> None:
+        """Note what a panel says about its wifi.
+
+        Worth showing because a weak link does not present as a weak link: it
+        presents as video that takes sixteen seconds, talkback that arrives
+        four seconds late, and timeouts against a service that is plainly up.
+        One panel at -79 beside two at -40 is the whole diagnosis, and it is
+        invisible unless something reports it.
+        """
+        if panel_id not in self._panels:
+            return
+        rssi = reading.get("rssi")
+        self._links[panel_id] = {
+            # Below -100 or above 0 is not a reading, it is a driver saying
+            # it does not know.
+            "rssi": int(rssi) if isinstance(rssi, (int, float)) and -100 <= rssi <= 0 else None,
+            "bssid": str(reading.get("bssid") or "")[:32],
+            "ssid": str(reading.get("ssid") or "")[:64],
+            "link_speed_mbps": int(reading.get("link_speed_mbps") or 0),
+            "frequency_mhz": int(reading.get("frequency_mhz") or 0),
+            "at": datetime.now(UTC).isoformat(),
+        }
 
     async def async_register(self, name: str, device_id: str) -> tuple[dict[str, Any], str]:
         panel_id = device_id.strip().lower()

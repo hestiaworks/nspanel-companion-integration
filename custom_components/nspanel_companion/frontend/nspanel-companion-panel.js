@@ -1621,6 +1621,27 @@ class NSPanelCompanionPanel extends HTMLElement {
     </div>`;
   }
 
+  /**
+   * A wifi reading as a word and a number.
+   *
+   * Bands rather than a bare figure, because -75 means nothing to most
+   * people and "weak" does. The boundaries match what the panels here
+   * actually read: healthy ones sit near -40, and trouble began at -75 with
+   * packet loss and seconds of delay on anything streaming.
+   */
+  signalLabel(link) {
+    if (!link || typeof link.rssi !== "number") return null;
+    const rssi = link.rssi;
+    const band = rssi >= -55 ? "strong" : rssi >= -67 ? "good" : rssi >= -73 ? "weak" : "poor";
+    return {
+      rssi,
+      band,
+      text: `${rssi} dBm`,
+      title: [link.ssid, link.bssid, link.link_speed_mbps ? `${link.link_speed_mbps} Mbps` : ""]
+        .filter(Boolean).join(" · "),
+    };
+  }
+
   panelCard(panel) {
     const online = !panel.revoked && panel.last_seen && Date.now() - new Date(panel.last_seen).getTime() < 45000;
     const known = panel.page_count !== undefined;
@@ -1636,6 +1657,7 @@ class NSPanelCompanionPanel extends HTMLElement {
     const metrics = `<div class="metrics">
       <div><span class="t-label">Pages</span><b class="${known ? "" : "none"}">${known ? pageCount : "—"}</b></div>
       <div><span class="t-label">Last seen</span><b class="${panel.last_seen ? "" : "none"}">${panel.last_seen ? escapeHtml(sinceLabel(panel.last_seen)) : "—"}</b></div>
+      ${(() => { const sig = this.signalLabel(panel.link); return `<div><span class="t-label">Signal</span><b class="${sig ? `sig-${sig.band}` : "none"}" title="${sig ? escapeHtml(sig.title) : ""}">${sig ? escapeHtml(sig.text) : "—"}</b></div>`; })()}
       <div class="wide"><span class="t-label">Revision</span>
         <b class="id ${revision ? "" : "none"}" title="${escapeHtml(revision)}">${revision ? escapeHtml(revision) : "—"}</b></div>
     </div>`;
@@ -2876,6 +2898,13 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .panel-card .metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:14px 0; border-top:1px solid var(--line); padding-top:14px; }
 .panel-card .metrics > * { min-width:0; }
 .panel-card .metrics b { display:block; font:700 20px/1 var(--font); margin-top:4px; }
+/* A signal reading is only useful if a weak one looks weak. The bands match
+   what the panels here read: healthy around -40, trouble from -75. Uses the
+   tokens the rest of the page already defines, so it follows the theme. */
+.panel-card .metrics b.sig-strong,
+.panel-card .metrics b.sig-good { color:var(--ok); }
+.panel-card .metrics b.sig-weak { color:var(--pending); }
+.panel-card .metrics b.sig-poor { color:var(--danger); }
 
 /* An identifier is not a reading. Revisions, panel ids, tokens and
    entity ids are unbounded strings the user reads character by

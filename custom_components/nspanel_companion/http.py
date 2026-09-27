@@ -449,6 +449,12 @@ class PanelWebSocketView(HomeAssistantView):
                             level if level in {"info", "warn", "error"} else "info",
                         )
                         continue
+                    if data.get("type") == "panel_link":
+                        # What the panel's radio currently sees. Held in
+                        # memory and shown in the admin list, because a weak
+                        # link masquerades as several unrelated faults.
+                        registry.record_link(panel_id, data)
+                        continue
                     if data.get("type") == "history_request":
                         await send_history(
                             str(data.get("entity_id", "")), str(data.get("range", "24h")),
