@@ -170,6 +170,24 @@ class Injection(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("http://192.0.2.9:11081/talk/44", widget["talkback_url"])
         self.assertEqual("scrypted-key-44", widget["talkback_key"])
 
+    async def test_camera_widgets_are_given_the_microphone_gain(self):
+        """The gain is a panel property, so every camera page gets it.
+
+        It reached the ring screen from the doorbell config and had no route
+        to a camera page opened from the dashboard, which therefore used 100
+        whatever was configured.
+        """
+        registry = self.registry(None)
+        hydrated = await registry._hydrate_camera_widgets(
+            self.layout(), {"talkback_gain": 70},
+        )
+        self.assertEqual(70, hydrated["pages"][0]["widgets"][0]["talkback_gain"])
+
+    async def test_a_doorbell_without_a_gain_sends_audio_as_heard(self):
+        registry = self.registry(None)
+        hydrated = await registry._hydrate_camera_widgets(self.layout(), {})
+        self.assertEqual(100, hydrated["pages"][0]["widgets"][0]["talkback_gain"])
+
     async def test_without_an_add_on_the_fields_are_empty(self):
         registry = self.registry(None)
         hydrated = await registry._hydrate_camera_widgets(self.layout(), {})

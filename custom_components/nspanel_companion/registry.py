@@ -732,6 +732,11 @@ class PanelRegistry:
                 widget["talkback_key"] = selected.get("talkback_key", "")
                 widget["talk_url"] = talk_url
                 widget["talk_key"] = talk_key
+                # The microphone gain is a property of the panel, not of one
+                # camera, so every camera page gets the doorbell's. Without
+                # it the setting applied to a ring and was silently 100 on
+                # the same camera opened from the dashboard.
+                widget["talkback_gain"] = int(doorbell.get("talkback_gain", 100) or 100)
             page["widgets"] = widgets
         hydrated["pages"] = pages
         return hydrated
