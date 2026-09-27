@@ -283,6 +283,8 @@ class PanelWebSocketView(HomeAssistantView):
                         "stream_name": doorbell_config.get("stream_name", ""),
                         "talkback_url": doorbell_config.get("talkback_url", ""),
                         "talkback_key": doorbell_config.get("talkback_key", ""),
+                        "talk_url": doorbell_config.get("talk_url", ""),
+                        "talk_key": doorbell_config.get("talk_key", ""),
                         "quiet_mode": doorbell_config.get("quiet_mode", False),
                         "chime": doorbell_config.get("chime", "off"),
                         "chime_volume": doorbell_config.get("chime_volume", 70),

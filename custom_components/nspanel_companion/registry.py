@@ -22,6 +22,9 @@ DEVICE_ID = re.compile(r"^[A-Za-z0-9._:-]{4,128}$")
 # The add-on discloses its pairing code to this host only, so these are the only
 # addresses that can answer. An updater running elsewhere is paired by hand.
 LOOPBACK_UPDATER_URLS = ("http://127.0.0.1:8098", "http://localhost:8098")
+#: Where a talkback add-on running beside Home Assistant answers. Reaching
+#: its pairing code at all is what proves it is the local one.
+LOOPBACK_TALKBACK_URLS = ("http://127.0.0.1:8099", "http://localhost:8099")
 SENSITIVE_DIAGNOSTIC = re.compile(
     r"(?i)(?:bearer\s+\S+|(?:https?|rtsp|wss?)://\S+|(?:token|password|access[_ -]?key|claim)\s*[:=]\s*\S+)"
 )
@@ -63,6 +66,10 @@ class PanelRegistry:
         self._panels: dict[str, dict[str, Any]] = {}
         self._scrypted_bridges: dict[str, dict[str, Any]] = {}
         self._updater: dict[str, Any] | None = None
+        #: The talkback add-on, which carries panel microphone audio to a
+        #: doorbell over the camera's own protocol. Optional: without it the
+        #: panel keeps talking through Scrypted, slower but working.
+        self._talkback: dict[str, Any] | None = None
         #: What the updater add-on last said is published, and when. Held in
         #: memory rather than stored: it is a cache of somebody else's fact,
         #: and a restart is the right moment to ask again.
@@ -81,6 +88,8 @@ class PanelRegistry:
         }
         updater = data.get("updater")
         self._updater = updater if isinstance(updater, dict) and updater.get("token") else None
+        talkback = data.get("talkback")
+        self._talkback = talkback if isinstance(talkback, dict) and talkback.get("token") else None
         self._settings.update(data.get("settings", {}))
         if self._drop_example_stream_urls():
             await self._save()
@@ -187,6 +196,81 @@ class PanelRegistry:
             "The updater add-on could not be reached on this host. If it runs "
             "elsewhere, pair it manually with its address and pairing code."
         )
+
+    def talkback_public(self) -> dict[str, Any] | None:
+        """Talkback add-on metadata, without its bearer token."""
+        if not self._talkback:
+            return None
+        return {key: value for key, value in self._talkback.items() if key != "token"}
+
+    async def async_pair_talkback(
+        self, base_url: str, code: str, source: str = "manual"
+    ) -> dict[str, Any]:
+        base_url = base_url.strip().rstrip("/")
+        if not base_url.startswith(("http://", "https://")):
+            raise ValueError("Invalid talkback URL")
+        if not re.fullmatch(r"\d{6}", code.strip()):
+            raise ValueError("Pairing code must contain six digits")
+        session = async_get_clientsession(self._hass)
+        try:
+            async with session.post(
+                f"{base_url}/api/pair", json={"code": code.strip()}, timeout=15
+            ) as response:
+                payload = await response.json()
+                if response.status != 200:
+                    raise ValueError(payload.get("error", "Talkback pairing failed"))
+        except ValueError:
+            raise
+        except Exception as err:  # noqa: BLE001 - surfaced to the admin page
+            raise ValueError(f"Unable to reach talkback add-on: {err}") from err
+        talkback_id = str(payload.get("id") or "").strip()
+        token = str(payload.get("token") or "").strip()
+        if not talkback_id or not token:
+            raise ValueError("Talkback add-on returned an invalid pairing response")
+        self._talkback = {
+            "id": talkback_id,
+            "name": str(payload.get("name") or "NSPanel Companion Talkback")[:64],
+            "base_url": base_url,
+            "token": token,
+            "source": "local" if source == "local" else "manual",
+            "paired_at": datetime.now(UTC).isoformat(),
+        }
+        await self._save()
+        return self.talkback_public() or {}
+
+    async def async_autopair_talkback(self) -> dict[str, Any]:
+        """Pair with a talkback add-on running alongside Home Assistant."""
+        session = async_get_clientsession(self._hass)
+        for base_url in LOOPBACK_TALKBACK_URLS:
+            try:
+                async with session.get(f"{base_url}/api/pair-code", timeout=10) as response:
+                    if response.status != 200:
+                        continue
+                    payload = await response.json()
+            except Exception:  # noqa: BLE001 - any failure means try the next address
+                continue
+            code = str(payload.get("code") or "").strip()
+            if code:
+                return await self.async_pair_talkback(base_url, code, source="local")
+        raise ValueError(
+            "The talkback add-on could not be reached on this host. If it runs "
+            "elsewhere, pair it manually with its address and pairing code."
+        )
+
+    async def async_unpair_talkback(self) -> None:
+        """Forget the add-on. Panels fall back to talking through Scrypted."""
+        self._talkback = None
+        await self._save()
+
+    def _talk_endpoint(self) -> "tuple[str, str]":
+        """The URL and key a panel should post microphone audio to.
+
+        Empty when no add-on is paired, which is what makes the panel fall
+        back to the Scrypted path rather than losing talkback altogether.
+        """
+        if not self._talkback:
+            return "", ""
+        return f"{self._talkback['base_url']}/api/talk", str(self._talkback["token"])
 
     def release_public(self) -> dict[str, Any]:
         """The published release as last reported, and who is not on it."""
@@ -575,10 +659,17 @@ class PanelRegistry:
         # than a second command that overwrote the layout just published.
         doorbell_bridge = str(doorbell.get("scrypted_bridge_id", ""))
         doorbell_device = str(doorbell.get("scrypted_doorbell_id", ""))
+        # Where the microphone goes, if a talkback add-on is paired. Written
+        # everywhere a camera is configured, so nobody copies a URL or a key
+        # by hand — and left empty when none is paired, which is what makes a
+        # panel fall back to talking through Scrypted rather than not at all.
+        talk_url, talk_key = self._talk_endpoint()
         if doorbell_bridge and doorbell_device:
             selected = await device(doorbell_bridge, doorbell_device)
             doorbell["talkback_url"] = selected.get("talkback_url", "")
             doorbell["talkback_key"] = selected.get("talkback_key", "")
+            doorbell["talk_url"] = talk_url
+            doorbell["talk_key"] = talk_key
             hydrated["doorbell"] = doorbell
         for page in pages:
             widgets = [dict(widget) for widget in page.get("widgets", [])]
@@ -610,6 +701,8 @@ class PanelRegistry:
                 ) or "doorbell_sub"
                 widget["talkback_url"] = selected.get("talkback_url", "")
                 widget["talkback_key"] = selected.get("talkback_key", "")
+                widget["talk_url"] = talk_url
+                widget["talk_key"] = talk_key
             page["widgets"] = widgets
         hydrated["pages"] = pages
         return hydrated
@@ -631,6 +724,7 @@ class PanelRegistry:
             "panels": list(self._panels.values()),
             "scrypted_bridges": list(self._scrypted_bridges.values()),
             "updater": self._updater,
+            "talkback": self._talkback,
             "settings": self._settings,
         }
 

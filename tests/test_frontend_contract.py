@@ -122,9 +122,11 @@ class FrontendContractTest(unittest.TestCase):
 
     def test_admin_websocket_commands_use_current_ha_decorator(self):
         source = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
-        # 25 since scrypted/assign went: publishing a layout is one command,
-        # and the doorbell's Scrypted credentials are filled in as it saves.
-        self.assertEqual(25, source.count("@websocket_api.require_admin"))
+        # 29: the 25 that remained after scrypted/assign went — publishing a
+        # layout is one command, and the doorbell's Scrypted credentials are
+        # filled in as it saves — plus four for the talkback add-on, which is
+        # paired, unpaired and asked about exactly like the updater.
+        self.assertEqual(29, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
         self.assertIn('{"nspanel-companion", "probable-nspanel"}', source)
         self.assertIn('device.get("adb_state") == "device"', source)

@@ -58,6 +58,8 @@ class ExampleStreamUrlTest(unittest.IsolatedAsyncioTestCase):
 
     def registry(self, panels):
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         registry._panels = {p["panel_id"]: p for p in panels}
         registry._scrypted_bridges = {}
         registry._updater = None
@@ -114,6 +116,8 @@ class StaleFallbackTest(unittest.IsolatedAsyncioTestCase):
 
     def registry(self):
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         registry.async_scrypted_doorbells = AsyncMock(return_value=[{
             "id": "44", "name": "Front door",
             "video_url": "rtsp://192.0.2.9:45541/session-that-dies",
@@ -168,6 +172,8 @@ class DoorbellSourceOfTruthTest(unittest.IsolatedAsyncioTestCase):
 
     def registry(self):
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         registry.async_scrypted_doorbells = AsyncMock(return_value=[self.DEVICE])
         return registry
 
@@ -248,6 +254,8 @@ class BehindReleaseTest(unittest.TestCase):
 class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):
     async def test_rename_updates_record_and_device_registry(self):
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         registry._hass = object()
         registry._panels = {"panel-abcd": {
             "panel_id": "panel-abcd", "device_id": "panel-abcd", "name": "Old name",
@@ -266,12 +274,16 @@ class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_rename_rejects_empty_name(self):
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         registry._panels = {"panel-abcd": {"panel_id": "panel-abcd", "name": "Panel"}}
         with self.assertRaisesRegex(ValueError, "cannot be empty"):
             await registry.async_rename("panel-abcd", "   ")
 
     def test_heartbeat_sanitizes_and_hides_diagnostics_from_panel_list(self):
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         token = "valid-token"
         registry._panels = {"panel-abcd": {
             "panel_id": "panel-abcd", "device_id": "panel-abcd", "name": "Panel",
@@ -298,6 +310,8 @@ class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):
         unconfigured however many pages it had.
         """
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         registry._panels = {"panel-abcd": {
             "panel_id": "panel-abcd", "device_id": "panel-abcd", "name": "Panel",
             "token_hash": "x", "revoked": False,
@@ -314,6 +328,8 @@ class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):
 
     def test_a_panel_with_no_layout_says_so_rather_than_guessing(self):
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         registry._panels = {"panel-abcd": {
             "panel_id": "panel-abcd", "device_id": "panel-abcd", "name": "Panel",
             "token_hash": "x", "revoked": False, "layout": None,
@@ -334,6 +350,8 @@ class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):
         read by nobody past the first few lines.
         """
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         registry._panels = {"panel-abcd": {
             "panel_id": "panel-abcd", "device_id": "panel-abcd", "name": "Panel",
             "token_hash": "x", "revoked": False,
@@ -353,6 +371,8 @@ class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):
         # Sockets close after a panel is removed; that is not an error worth
         # raising into a request that is already finishing.
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         registry._panels = {}
         registry._store = Mock()
         registry._storage_data = {}
@@ -361,6 +381,8 @@ class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_pairing_existing_identity_preserves_layout_and_reauthorizes(self):
         registry = PanelRegistry.__new__(PanelRegistry)
+        # __init__ is bypassed here; the talk endpoint reads this.
+        registry._talkback = None
         old_token = "old-token"
         layout = {"schema_version": 1, "revision": "living-room-v4", "pages": []}
         registry._panels = {
