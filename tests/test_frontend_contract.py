@@ -286,3 +286,46 @@ class TemplateScopeTest(unittest.TestCase):
                 offenders.append(f"{current}() line {number}")
         self.assertEqual([], offenders, "bare layout. with no local layout")
 
+
+
+class SettingsAreActuallySaved(unittest.TestCase):
+    """Every control in the settings form must be read back and published.
+
+    Three settings shipped in 0.61.0 with an input, a default and backend
+    validation, but no line in either the form collector or the publish
+    payload. They rendered, they accepted a value, and the value went
+    nowhere — the toggle simply sprang back. Nothing failed, because
+    nothing ran.
+    """
+
+    PANEL = ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js"
+
+    def _names_in(self, css_class: str) -> set:
+        source = self.PANEL.read_text()
+        start = source.index(f'<fieldset class="{css_class}"')
+        end = source.index("</fieldset>", start)
+        block = source[start:end]
+        # Sliders render their own input, so take their key as the name too.
+        names = set(re.findall(r'name="([a-z0-9_]+)"', block))
+        names |= set(re.findall(r'brightnessSlider\("([a-z0-9_]+)"', block))
+        return names
+
+    def test_every_display_control_is_collected_and_published(self):
+        source = self.PANEL.read_text()
+        missing = []
+        for name in sorted(self._names_in("display")):
+            if f'values.get("{name}")' not in source:
+                missing.append(f"{name}: never read from the form")
+            elif f"this.editor.layout.{name}" not in source:
+                missing.append(f"{name}: read but never published")
+        self.assertEqual([], missing, "settings that would silently not save")
+
+    def test_every_network_control_is_collected_and_published(self):
+        source = self.PANEL.read_text()
+        missing = []
+        for name in sorted(self._names_in("network")):
+            if f'values.get("{name}")' not in source:
+                missing.append(f"{name}: never read from the form")
+            elif f"this.editor.layout.{name}" not in source:
+                missing.append(f"{name}: read but never published")
+        self.assertEqual([], missing, "settings that would silently not save")
