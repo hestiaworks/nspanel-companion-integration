@@ -236,13 +236,15 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.error = "";
     this.render();
     try {
-      [this.panels, this.scrypted, this.updater] = await Promise.all([
+      [this.panels, this.scrypted, this.updater, this.talkback] = await Promise.all([
         this.call({ type: "nspanel_companion/panels/list" }),
         this.call({ type: "nspanel_companion/scrypted/list" }),
         this.call({ type: "nspanel_companion/updater/status" }),
+        this.call({ type: "nspanel_companion/talkback/status" }),
       ]);
       this.loaded = true;
       await this.autopairUpdater();
+      await this.autopairTalkback();
     } catch (error) {
       this.error = error?.message || "Unable to load panels";
     } finally {
@@ -981,6 +983,43 @@ class NSPanelCompanionPanel extends HTMLElement {
     }
   }
 
+  async pairTalkback(form) {
+      const values = new FormData(form);
+      this.busy = true; this.error = ""; this.render();
+      try {
+        await this.call({
+          type: "nspanel_companion/talkback/pair",
+          base_url: String(values.get("base_url") || "").trim(),
+          code: String(values.get("code") || "").trim(),
+        });
+        this.talkback = await this.call({ type: "nspanel_companion/talkback/status" });
+      } catch (error) { this.error = error?.message || "Unable to pair the talkback add-on"; }
+      finally { this.busy = false; this.render(); }
+    }
+
+  async autopairTalkback() {
+      // Same reasoning as the updater: installing the add-on is the request,
+      // and no add-on installed is the normal case rather than an error.
+      if (this._autopairTalkbackTried || this.talkback?.paired) return;
+      this._autopairTalkbackTried = true;
+      try {
+        await this.call({ type: "nspanel_companion/talkback/autopair" });
+        this.talkback = await this.call({ type: "nspanel_companion/talkback/status" });
+      } catch (error) {
+        /* No talkback add-on on this host. The manual path stays available. */
+      }
+    }
+
+  async unpairTalkback() {
+      if (!confirm("Unpair the talkback add-on? Panels go back to talking through Scrypted, which is slower.")) return;
+      this.busy = true; this.error = ""; this.render();
+      try {
+        await this.call({ type: "nspanel_companion/talkback/unpair" });
+        this.talkback = { paired: null };
+      } catch (error) { this.error = error?.message || "Unable to unpair the talkback add-on"; }
+      finally { this.busy = false; this.render(); }
+    }
+
   async unpairUpdater() {
     if (!confirm("Unpair the ADB updater service? No panel apps will be changed.")) return;
     this.busy = true; this.error = ""; this.render();
@@ -1243,6 +1282,11 @@ class NSPanelCompanionPanel extends HTMLElement {
       event.preventDefault(); this.pairUpdater(event.currentTarget);
     });
     this.shadowRoot.querySelector("#updater-unpair")?.addEventListener("click", () => this.unpairUpdater());
+    this.shadowRoot.querySelector("#talkback-pair")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this.pairTalkback(event.target);
+    });
+    this.shadowRoot.querySelector("#talkback-unpair")?.addEventListener("click", () => this.unpairTalkback());
     this.shadowRoot.querySelectorAll("[data-sound-play]").forEach((button) =>
       button.addEventListener("click", () => this.previewSound(button)));
     this.shadowRoot.querySelector("[data-restart-panel]")?.addEventListener("click", () => this.restartPanel(false));
@@ -1709,6 +1753,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         <div class="page-head"><div><h1 class="t-page">Integrations</h1><p>Optional services. Pair once — panels pick the change up on their next sync.</p></div></div>
         ${this.scryptedService()}
         ${this.updaterService()}
+        ${this.talkbackService()}
       </main>`;
   }
 
@@ -1759,6 +1804,29 @@ class NSPanelCompanionPanel extends HTMLElement {
       ${latest.url ? `<a class="small" href="${escapeHtml(latest.url)}" target="_blank" rel="noreferrer">Release notes</a>` : ""}
     </div>`;
   }
+
+  talkbackService() {
+      const paired = this.talkback?.paired;
+      const head = `<div class="head"><span class="name">Doorbell talkback</span>
+        <span class="what">Low-latency two-way audio to a Reolink doorbell</span><span class="spacer"></span>
+        <span class="status ${paired ? "online" : "offline"}">${paired ? "Talkback add-on connected" : "not set up"}</span></div>`;
+      if (!paired) {
+        return `<section class="service inactive">${head}
+          <div class="foot">Optional. Without it panels still talk to the doorbell through Scrypted &mdash; the same audio, two to three seconds later, because the camera's ONVIF path buffers in its firmware. Start the NSPanel Companion Talkback add-on and it connects here on its own.</div>
+          <form class="detail" id="talkback-pair">
+            <div class="grow"><input name="base_url" placeholder="http://homeassistant.local:8099" value=""></div>
+            <input name="code" class="mono" style="flex:0 0 120px" inputmode="numeric" maxlength="6" placeholder="000000" aria-label="Pairing code">
+            <button class="small primary" ${this.busy ? "disabled" : ""}>Pair</button>
+          </form>
+          <div class="foot">The six-digit code is printed in the add-on log. The camera's address and a limited camera user go in the add-on's own configuration &mdash; talkback does not need an admin account.</div></section>`;
+      }
+      return `<section class="service">${head}
+        <div class="foot">Panels send the microphone here, and it reaches the doorbell over the camera's own protocol. Republish a panel's layout to move it onto this path; a panel that has not been republished keeps using Scrypted.</div>
+        <div class="detail">
+          <div class="grow"><span class="notice plain">Connected to ${escapeHtml(String(paired.name || "the talkback add-on"))} at ${escapeHtml(String(paired.base_url || ""))}</span></div>
+          ${paired.source === "manual" ? `<button type="button" class="small quiet" id="talkback-unpair" ${this.busy ? "disabled" : ""}>Unpair</button>` : ""}
+        </div></section>`;
+    }
 
   updaterService() {
     const paired = this.updater?.paired;

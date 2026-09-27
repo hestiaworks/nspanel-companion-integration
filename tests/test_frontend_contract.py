@@ -329,3 +329,35 @@ class SettingsAreActuallySaved(unittest.TestCase):
             elif f"this.editor.layout.{name}" not in source:
                 missing.append(f"{name}: read but never published")
         self.assertEqual([], missing, "settings that would silently not save")
+
+
+class FrontendCallsCommandsThatExist(unittest.TestCase):
+    """Every websocket command the panel calls must be registered.
+
+    A mistyped command name fails only when a person clicks the thing, with
+    an error that names the type rather than the mistake.
+    """
+
+    def test_no_command_is_called_that_the_backend_does_not_serve(self):
+        panel = (ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js").read_text()
+        backend = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
+        called = set(re.findall(r'type: "(nspanel_companion/[a-z_/]+)"', panel))
+        served = set(re.findall(r'"(nspanel_companion/[a-z_/]+)"', backend))
+        self.assertTrue(called, "found no commands in the panel — the regex has drifted")
+        self.assertEqual(set(), called - served,
+                         "the panel calls commands the backend does not register")
+
+    def test_the_talkback_commands_are_wired_end_to_end(self):
+        panel = (ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js").read_text()
+        backend = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
+        for verb in ("status", "pair", "autopair", "unpair"):
+            command = f"nspanel_companion/talkback/{verb}"
+            self.assertIn(command, panel, f"{command} is never called by the panel")
+            self.assertIn(command, backend, f"{command} is not registered")
+
+    def test_every_registered_command_has_its_handler_registered(self):
+        backend = (ROOT / "custom_components/nspanel_companion/websocket.py").read_text()
+        defined = set(re.findall(r"^async def (ws_[a-z_]+)\(", backend, re.M))
+        registered = set(re.findall(r"async_register_command\(hass, (ws_[a-z_]+)\)", backend))
+        self.assertEqual(set(), defined - registered,
+                         "handlers that exist but are never registered would never be callable")
