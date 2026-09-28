@@ -332,3 +332,38 @@ class PublishRepairsAStalePairing(unittest.IsolatedAsyncioTestCase):
         registry = PanelRegistry.__new__(PanelRegistry)
         registry._talkback = None
         await registry.async_ensure_talkback()   # must not raise
+
+
+class BothRingsCarryTheCredentials(unittest.TestCase):
+    """A ring means the same thing however it was triggered.
+
+    There were two paths. A ring from the doorbell's trigger entity carried
+    the talkback credentials; a ring fired as an nspanel_doorbell event
+    passed its own data straight through without them. The panel then had no
+    add-on endpoint for that ring and used the slower path — on the same
+    doorbell, from the same panel, for no reason visible to anyone.
+    """
+
+    SOURCE = (Path(__file__).parents[1]
+              / "custom_components/nspanel_companion/http.py").read_text()
+
+    def test_the_payload_is_built_in_one_place(self):
+        self.assertEqual(1, self.SOURCE.count("def doorbell_payload"))
+
+    def test_the_event_path_no_longer_forwards_raw_event_data(self):
+        self.assertNotIn('"data": dict(event.data)', self.SOURCE,
+                         "the event path bypasses the payload builder again")
+
+    def test_both_paths_use_the_builder(self):
+        # Once for the definition, twice for the two ways a ring arrives.
+        self.assertGreaterEqual(self.SOURCE.count("doorbell_payload("), 3)
+
+    def test_the_builder_carries_the_talk_endpoint(self):
+        start = self.SOURCE.index("def doorbell_payload")
+        body = self.SOURCE[start:start + 2000]
+        for key in ("talk_url", "talk_key", "talkback_url", "talkback_key"):
+            self.assertIn(key, body, f"a ring would arrive without {key}")
+
+    def test_the_event_may_still_override_what_it_knows(self):
+        # Quiet mode, a chime, a different stream: the caller's to decide.
+        self.assertIn("payload.update(", self.SOURCE)

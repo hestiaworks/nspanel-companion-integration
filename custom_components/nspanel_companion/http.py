@@ -278,7 +278,20 @@ class PanelWebSocketView(HomeAssistantView):
             ):
                 self._hass.async_create_task(socket.send_json({
                     "type": "doorbell",
-                    "data": {
+                    "data": doorbell_payload(doorbell_config),
+                }))
+
+        def doorbell_payload(doorbell_config: dict) -> dict:
+            """What a ring tells a panel, however the ring arrived.
+
+            Built in one place because it was built in two: a ring from the
+            trigger entity carried the talkback credentials and a ring from
+            the nspanel_doorbell event passed its own data straight through
+            without them. The panel then had no add-on endpoint for that
+            ring and used the slower path, on the same doorbell, for no
+            reason a person could see.
+            """
+            return {
                         "stream_base_url": doorbell_config.get("stream_base_url", ""),
                         "stream_name": doorbell_config.get("stream_name", ""),
                         "talkback_url": doorbell_config.get("talkback_url", ""),
@@ -291,8 +304,7 @@ class PanelWebSocketView(HomeAssistantView):
                         "talkback_gain": doorbell_config.get("talkback_gain", 100),
                         "auto_close_ms": doorbell_config.get("auto_close_ms", 60000),
                         "talk_extend_ms": doorbell_config.get("talk_extend_ms", 15000) if doorbell_config.get("talk_extend_enabled", True) else 0,
-                    },
-                }))
+            }
 
         @callback
         def doorbell(event) -> None:
@@ -303,7 +315,16 @@ class PanelWebSocketView(HomeAssistantView):
                 and (target is None or target == panel_id)
                 and (not isinstance(targets, list) or panel_id in targets)
             ):
-                self._hass.async_create_task(socket.send_json({"type": "doorbell", "data": dict(event.data)}))
+                # The event's own data wins where it says anything, but the
+                # credentials come from this panel's layout: whoever fires
+                # the event has no way to know them, and without them the
+                # panel falls back to the slower talkback path.
+                layout = (registry.layout(panel_id) or {})
+                payload = doorbell_payload(layout.get("doorbell") or {})
+                payload.update({k: v for k, v in event.data.items()
+                                if k not in ("panel_id", "panel_ids")})
+                self._hass.async_create_task(socket.send_json(
+                    {"type": "doorbell", "data": payload}))
 
         unsub_state = self._hass.bus.async_listen("state_changed", state_changed)
         unsub_doorbell = self._hass.bus.async_listen("nspanel_doorbell", doorbell)
