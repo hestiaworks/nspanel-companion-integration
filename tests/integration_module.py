@@ -13,9 +13,11 @@ import types
 ROOT = Path(__file__).parents[1] / "custom_components/nspanel_companion"
 
 
+if "nspanel_companion" not in sys.modules:
+    package = types.ModuleType("nspanel_companion")
+    package.__path__ = [str(ROOT)]
+    sys.modules["nspanel_companion"] = package
+
+
 def load(name: str):
-    if "nspanel_companion" not in sys.modules:
-        package = types.ModuleType("nspanel_companion")
-        package.__path__ = [str(ROOT)]
-        sys.modules["nspanel_companion"] = package
     return import_module(f"nspanel_companion.{name}")

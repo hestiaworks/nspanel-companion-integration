@@ -1,0 +1,34 @@
+notify:
+  # The entity filter also narrows the device and area pickers to panels.
+  target:
+    entity:
+      integration: nspanel_companion
+  fields:
+    message:
+      required: true
+      example: "The washing machine has finished"
+      selector:
+        text:
+          multiline: true
+    title:
+      example: "Laundry"
+      selector:
+        text:
+    importance:
+      default: normal
+      selector:
+        select:
+          options:
+            - normal
+            - important
+          translation_key: importance
+    sound:
+      selector:
+        select:
+          options:
+            - "off"
+            - notify_soft
+            - notify_chime
+            - notify_alert
+            - notify_ping
+          translation_key: sound

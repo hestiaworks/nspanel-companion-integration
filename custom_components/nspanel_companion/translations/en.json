@@ -46,5 +46,46 @@
         "name": "Page"
       }
     }
+  },
+  "services": {
+    "notify": {
+      "name": "Notify panels",
+      "description": "Shows a notification on the targeted panels that are connected now. Nothing is queued for a panel that is offline.",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "What the notification says."
+        },
+        "title": {
+          "name": "Title",
+          "description": "A short heading above the message."
+        },
+        "importance": {
+          "name": "Importance",
+          "description": "Important notifications open a sheet over the page and always play their sound, even during do not disturb."
+        },
+        "sound": {
+          "name": "Sound",
+          "description": "Overrides the panel's sound for this notification only."
+        }
+      }
+    }
+  },
+  "selector": {
+    "importance": {
+      "options": {
+        "normal": "Normal",
+        "important": "Important"
+      }
+    },
+    "sound": {
+      "options": {
+        "off": "Silent",
+        "notify_soft": "Soft",
+        "notify_chime": "Chime",
+        "notify_alert": "Alert",
+        "notify_ping": "Ping"
+      }
+    }
   }
 }

@@ -13,6 +13,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .frontend import async_register_panel, async_setup_frontend_assets, async_unregister_panel
 from .http import register_pairing_views
+from .notify_service import async_register_services
 from .pairing import PairingManager
 from .panel_discovery import PanelDiscovery
 from .registry import PanelRegistry
@@ -51,6 +52,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         pairings = domain_data[DATA_PAIRINGS] = PairingManager()
         register_pairing_views(hass, pairings)
         async_register_websocket_commands(hass)
+        async_register_services(hass)
         await async_setup_frontend_assets(hass)
         discovery = domain_data[DATA_SCRYPTED_DISCOVERY] = ScryptedDiscovery(hass)
         await discovery.async_start()
