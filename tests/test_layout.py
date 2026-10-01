@@ -1,15 +1,13 @@
 """Tests for the shared layout contract without requiring Home Assistant."""
 
-from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import re
 import unittest
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from integration_module import load  # noqa: E402
 
-PATH = Path(__file__).parents[1] / "custom_components/nspanel_companion/layout.py"
-SPEC = spec_from_file_location("nspanel_layout", PATH)
-layout_module = module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(layout_module)
+layout_module = load("layout")
 
 
 class LayoutValidationTest(unittest.TestCase):

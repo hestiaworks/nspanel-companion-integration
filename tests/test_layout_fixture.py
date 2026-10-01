@@ -5,11 +5,13 @@ sides against identical bytes is what keeps the Python validator and the Kotlin
 parser from drifting apart, which co-location used to hide rather than prevent.
 """
 
-from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import hashlib
 import json
 import unittest
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from integration_module import load  # noqa: E402
 
 ROOT = Path(__file__).parents[1]
 FIXTURE = Path(__file__).parent / "fixtures/layout-fixture.json"
@@ -18,9 +20,7 @@ FIXTURE = Path(__file__).parent / "fixtures/layout-fixture.json"
 # panel. Update it with nspanel-companion/schema/sync.sh, which rewrites both.
 LAYOUT_FIXTURE_SHA256 = "136f9aa3ce9b31ff60d8d2bc25d3dae93cc414ae1c03717efba244827dbb2a6c"
 
-spec = spec_from_file_location("layout", ROOT / "custom_components/nspanel_companion/layout.py")
-layout = module_from_spec(spec)
-spec.loader.exec_module(layout)
+layout = load("layout")
 
 CASES = json.loads(FIXTURE.read_text())
 

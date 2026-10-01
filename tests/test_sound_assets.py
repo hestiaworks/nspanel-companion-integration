@@ -12,16 +12,15 @@ Update both repositories together when a sound changes.
 
 import hashlib
 import unittest
-from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from integration_module import load  # noqa: E402
 
 ROOT = Path(__file__).parents[1] / "custom_components/nspanel_companion"
 SOUNDS_DIR = ROOT / "frontend/sounds"
 
-SPEC = spec_from_file_location("nspanel_layout", ROOT / "layout.py")
-layout_module = module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(layout_module)
+layout_module = load("layout")
 
 SOUNDS = {
     "chime_1.mp3": "bc2d599a1cab6611d9284ee4bc5a7181897aea3e25b6d2e60758c7a82b76d14e",

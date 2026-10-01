@@ -8,14 +8,13 @@ from typing import Any
 # Four rows of two on a 480 px sheet.
 MAX_CLIMATE_MODES = 8
 
-RING_SOUNDS = {"off", "chime_1", "chime_2", "chime_3"}
-
-# The three sounds the first audio build shipped, since replaced. A layout
-# still naming one is normalised to silence rather than refused: the sound is
-# gone either way, and refusing would leave a panel unable to publish
-# anything at all until someone found the field that named it.
-RETIRED_SOUNDS = {"chime", "bell", "ping"}
-
+from .notifications import (
+    DOORBELL_SOUNDS as RING_SOUNDS,
+    RETIRED_SOUNDS,
+    clock as _clock,
+    normalize_notifications,
+    sound,
+)
 
 
 def _bounded_int(value: Any, what: str, low: int, high: int) -> int:
@@ -58,27 +57,9 @@ def _reading(value: Any, what: str) -> int:
     return reading
 
 
-def _clock(value: Any, what: str) -> str:
-    """A time of day as "HH:MM", or a refusal.
-
-    Accepts a single-digit hour because a text field invites one, and writes
-    it back padded: the panel parses one shape and a layout it cannot read
-    would leave the screen behaving as though nothing had been set.
-    """
-    text = str(value).strip()
-    match = re.fullmatch(r"(\d{1,2}):([0-5]\d)", text)
-    if not match or int(match.group(1)) > 23:
-        raise ValueError(f"The {what} must be a time of day, for example 07:00")
-    return f"{int(match.group(1)):02d}:{match.group(2)}"
-
-
 def _sound(value: str, field: str) -> str:
-    name = str(value).strip() or "off"
-    if name in RETIRED_SOUNDS:
-        return "off"
-    if name not in RING_SOUNDS:
-        raise ValueError(f"Invalid {field}")
-    return name
+    return sound(value, RING_SOUNDS, field)
+
 
 SUPPORTED_WIDGETS = {"thermostat", "weather", "controls", "entity_button", "sensor", "camera", "history", "intercom"}
 # The spans a history page offers. How many bars each becomes is history.py's
@@ -389,6 +370,21 @@ def validate_layout(value: Any) -> dict[str, Any]:
         "noise_suppression": bool(intercom.get("noise_suppression", True)),
         "auto_gain": bool(intercom.get("auto_gain", True)),
     }
+    # Every sound the panel makes, in one block. The old per-feature fields
+    # are the block's starting point for a layout that has none, and are
+    # written back from it for one release so a panel still on the previous
+    # app hears what the block says.
+    notifications = normalize_notifications(
+        value.get("notifications"),
+        doorbell if isinstance(doorbell, dict) else {},
+        intercom,
+    )
+    normalized["notifications"] = notifications
+    if "doorbell" in normalized:
+        normalized["doorbell"]["chime"] = notifications["doorbell"]["sound"]
+        normalized["doorbell"]["chime_volume"] = notifications["doorbell"]["volume"]
+    normalized["intercom"]["ring"] = notifications["intercom"]["sound"]
+    normalized["intercom"]["ring_volume"] = notifications["intercom"]["volume"]
     normalized["nav_bar_mode"] = nav_bar_mode
     normalized["hide_accessibility_button"] = bool(
         value.get("hide_accessibility_button", False)

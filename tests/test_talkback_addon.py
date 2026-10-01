@@ -7,7 +7,6 @@ Scrypted, slower but working, and that fallback is the thing these tests
 mostly guard.
 """
 
-from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import sys
 import types
@@ -24,6 +23,9 @@ sys.modules.setdefault("nspanel_companion", package)
 sys.path.insert(0, str(Path(__file__).parent))
 
 import test_registry  # noqa: E402,F401  - installs the Home Assistant stubs
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from integration_module import load  # noqa: E402
 
 # _talk_endpoint asks Home Assistant where it lives, so panels are given an
 # address they can actually reach. Stubbed here rather than in test_registry
@@ -37,11 +39,7 @@ registry_module = sys.modules["nspanel_companion.registry"]
 PanelRegistry = registry_module.PanelRegistry
 panel_talk_base_url = registry_module.panel_talk_base_url
 
-PATH = Path(__file__).parents[1] / "custom_components/nspanel_companion/layout.py"
-SPEC = spec_from_file_location("nspanel_layout_talkback", PATH)
-layout_module = module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(layout_module)
+layout_module = load("layout")
 validate_layout = layout_module.validate_layout
 
 
