@@ -309,6 +309,9 @@ class SettingsAreActuallySaved(unittest.TestCase):
         # Sliders render their own input, so take their key as the name too.
         names = set(re.findall(r'name="([a-z0-9_]+)"', block))
         names |= set(re.findall(r'brightnessSlider\("([a-z0-9_]+)"', block))
+        # And sound pickers: a select and a volume each.
+        for sound, volume in re.findall(r'soundField\("[^"]*", "([a-z0-9_]+)", [^,]+, "([a-z0-9_]+)"', block):
+            names |= {sound, volume}
         return names
 
     def test_every_display_control_is_collected_and_published(self):
@@ -330,6 +333,35 @@ class SettingsAreActuallySaved(unittest.TestCase):
             elif f"this.editor.layout.{name}" not in source:
                 missing.append(f"{name}: read but never published")
         self.assertEqual([], missing, "settings that would silently not save")
+
+    def test_every_notification_control_is_collected_and_published(self):
+        # Nested under one block, so "published" means the block is: every
+        # control must be read into it, and the block must be in the payload.
+        source = self.PANEL.read_text()
+        names = self._names_in("notifications")
+        self.assertTrue(names, "found no notification controls — the fieldset has moved")
+        missing = [f"{name}: never read from the form"
+                   for name in sorted(names) if f'values.get("{name}")' not in source]
+        self.assertEqual([], missing, "settings that would silently not save")
+        self.assertIn("notifications: structuredClone(this.editor.layout.notifications", source)
+
+    def test_a_sound_picker_offers_only_its_own_category(self):
+        source = self.PANEL.read_text()
+        start = source.index('<fieldset class="notifications"')
+        block = source[start:source.index("</fieldset>", start)]
+        for kind, sounds in (("doorbell", "RING_SOUNDS"), ("intercom", "RING_SOUNDS"),
+                             ("normal", "NOTIFICATION_SOUNDS"),
+                             ("important", "NOTIFICATION_SOUNDS")):
+            with self.subTest(kind=kind):
+                self.assertRegex(block, rf'soundField\([^)]*"notify_{kind}_sound"[^)]*{sounds}\)')
+
+    def test_the_old_sound_controls_are_gone(self):
+        # One place for every sound: a second picker for the same setting
+        # would publish whichever was read last.
+        source = self.PANEL.read_text()
+        for old in ('soundField("Chime", "chime"', '"intercom_ring"'):
+            with self.subTest(control=old):
+                self.assertNotIn(old, source)
 
 
 class FrontendCallsCommandsThatExist(unittest.TestCase):

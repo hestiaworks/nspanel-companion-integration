@@ -7,6 +7,23 @@ const RING_SOUNDS = [
   { value: "chime_3", label: "Chime 3" },
 ];
 
+// Short, played once. Kept apart from the rings because they are a
+// different shape of sound: a ring loops until someone answers it.
+const NOTIFICATION_SOUNDS = [
+  { value: "off", label: "No sound" },
+  { value: "notify_soft", label: "Soft" },
+  { value: "notify_chime", label: "Chime" },
+  { value: "notify_alert", label: "Alert" },
+  { value: "notify_ping", label: "Ping" },
+];
+
+// What a kind of alert does during do not disturb.
+const DND_BEHAVIOURS = [
+  { value: "ring", label: "Ring as usual" },
+  { value: "silent", label: "Show without sound" },
+  { value: "suppress", label: "Don't show — list only" },
+];
+
 const SOUND_BASE = "/nspanel_companion/frontend/sounds";
 
 /**
@@ -17,9 +34,9 @@ const SOUND_BASE = "/nspanel_companion/frontend/sounds";
  * will play, allowing for its speaker. Choosing a doorbell chime by name
  * alone means walking to the panel to find out.
  */
-const soundField = (label, name, value, volumeName, volume, form = "") => `
+const soundField = (label, name, value, volumeName, volume, form = "", sounds = RING_SOUNDS) => `
   <label>${label}<span class="sound-row">
-    <select name="${name}" ${form ? `form="${form}"` : ""} data-sound-select>${RING_SOUNDS.map((sound) => `<option value="${sound.value}" ${(value || "off") === sound.value ? "selected" : ""}>${sound.label}</option>`).join("")}</select>
+    <select name="${name}" ${form ? `form="${form}"` : ""} data-sound-select>${sounds.map((sound) => `<option value="${sound.value}" ${(value || "off") === sound.value ? "selected" : ""}>${sound.label}</option>`).join("")}</select>
     <button type="button" class="sound-play" data-sound-play title="Play this sound">&#9654;</button>
   </span></label>
   <label>${label} volume<input name="${volumeName}" ${form ? `form="${form}"` : ""} type="number" min="0" max="100" value="${Number(volume ?? 70)}" data-sound-volume></label>`;
@@ -157,7 +174,7 @@ class NSPanelCompanionPanel extends HTMLElement {
   parsedWorkspaceRoute() {
     const match = window.location.hash.match(/^#panel\/([^/]+)(?:\/([^/]+))?(?:\/([^/]+))?$/);
     if (!match) return null;
-    const tabs = new Set(["general", "pages", "doorbell", "intercom", "diagnostics"]);
+    const tabs = new Set(["general", "pages", "doorbell", "intercom", "notifications", "diagnostics"]);
     let tab = decodeURIComponent(match[2] || "general");
     // Advanced was folded into diagnostics, so a link someone kept still
     // lands where its contents went rather than silently on General.
@@ -436,10 +453,34 @@ class NSPanelCompanionPanel extends HTMLElement {
       screen_off_after_seconds: Number(values.get("screen_off_after_seconds") ?? 30),
       wifi_reconnect_enabled: values.get("wifi_reconnect_enabled") === "on",
       wifi_reconnect_below_dbm: Number(values.get("wifi_reconnect_below_dbm") ?? -70),
+      notifications: {
+        doorbell: {
+          sound: String(values.get("notify_doorbell_sound") || "off"),
+          volume: Number(values.get("notify_doorbell_volume") ?? 70),
+          dnd: String(values.get("dnd_doorbell") || "ring"),
+        },
+        intercom: {
+          sound: String(values.get("notify_intercom_sound") || "off"),
+          volume: Number(values.get("notify_intercom_volume") ?? 70),
+          dnd: String(values.get("dnd_intercom") || "ring"),
+        },
+        normal: {
+          sound: String(values.get("notify_normal_sound") || "off"),
+          volume: Number(values.get("notify_normal_volume") ?? 60),
+          dnd: String(values.get("dnd_normal") || "silent"),
+        },
+        important: {
+          sound: String(values.get("notify_important_sound") || "off"),
+          volume: Number(values.get("notify_important_volume") ?? 80),
+        },
+        dnd: {
+          enabled: values.get("dnd_enabled") === "on",
+          from: String(values.get("dnd_from") || "22:00"),
+          to: String(values.get("dnd_to") || "07:00"),
+        },
+      },
       intercom: {
         enabled: values.get("intercom_enabled") === "on",
-        ring: String(values.get("intercom_ring") || "off"),
-        ring_volume: Number(values.get("intercom_ring_volume") ?? 70),
         noise_suppression: values.get("intercom_noise_suppression") === "on",
         auto_gain: values.get("intercom_auto_gain") === "on",
       },
@@ -861,6 +902,8 @@ class NSPanelCompanionPanel extends HTMLElement {
       wifi_reconnect_enabled: Boolean(this.editor.layout.wifi_reconnect_enabled),
       wifi_reconnect_below_dbm: Number(this.editor.layout.wifi_reconnect_below_dbm ?? -70),
       intercom: { enabled: Boolean(this.editor.layout.intercom?.enabled) },
+      ...(this.editor.layout.notifications
+        ? { notifications: structuredClone(this.editor.layout.notifications) } : {}),
       theme_mode: this.editor.draftThemeMode,
       theme_dark: this.editor.draftThemeMode === "dark" || this.editor.draftThemeMode === "inherit" && Boolean(this._hass?.themes?.darkMode),
       pages,
@@ -874,8 +917,6 @@ class NSPanelCompanionPanel extends HTMLElement {
         scrypted_bridge_id: scryptedDoorbell ? scryptedBridgeId : "",
         scrypted_doorbell_id: scryptedDoorbellId,
         quiet_mode: values.get("quiet_mode") === "on",
-        chime: String(values.get("chime") || "off"),
-        chime_volume: Number(values.get("chime_volume") ?? 70),
         talkback_gain: Number(values.get("talkback_gain") ?? 100),
         auto_close_ms: Number(values.get("auto_close_seconds") || 60) * 1000,
         talk_extend_enabled: values.get("talk_extend_enabled") === "on",
@@ -2131,6 +2172,40 @@ class NSPanelCompanionPanel extends HTMLElement {
       the same number for no band at all.${now}</div>`;
   }
 
+  /**
+   * The Notifications tab: four sounds, quiet hours, and what each kind does
+   * inside them.
+   *
+   * A layout published before this block existed falls back to the old
+   * doorbell chime and intercom ring, the same way the backend migrates it.
+   */
+  notificationSettings(layout) {
+    const block = layout.notifications || {};
+    const kind = (name, fallback) => ({ ...fallback, ...(block[name] || {}) });
+    const doorbell = kind("doorbell", { sound: layout.doorbell?.chime || "off", volume: layout.doorbell?.chime_volume ?? 70, dnd: "ring" });
+    const intercom = kind("intercom", { sound: layout.intercom?.ring || "off", volume: layout.intercom?.ring_volume ?? 70, dnd: "ring" });
+    const normal = kind("normal", { sound: "notify_soft", volume: 60, dnd: "silent" });
+    const important = kind("important", { sound: "notify_alert", volume: 80 });
+    const dnd = { enabled: false, from: "22:00", to: "07:00", ...(block.dnd || {}) };
+    const behaviour = (label, name, value) => `<label>${label}<select name="${name}" form="panel-general">${DND_BEHAVIOURS.map((option) => `<option value="${option.value}" ${value === option.value ? "selected" : ""}>${option.label}</option>`).join("")}</select></label>`;
+    return `<fieldset class="notifications" aria-label="Notifications"><div class="band-label">Sounds</div>
+          ${soundField("Doorbell", "notify_doorbell_sound", doorbell.sound, "notify_doorbell_volume", doorbell.volume, "panel-general", RING_SOUNDS)}
+          ${soundField("Intercom", "notify_intercom_sound", intercom.sound, "notify_intercom_volume", intercom.volume, "panel-general", RING_SOUNDS)}
+          ${soundField("Notification", "notify_normal_sound", normal.sound, "notify_normal_volume", normal.volume, "panel-general", NOTIFICATION_SOUNDS)}
+          ${soundField("Important", "notify_important_sound", important.sound, "notify_important_volume", important.volume, "panel-general", NOTIFICATION_SOUNDS)}
+          <small>Doorbell and intercom sounds ring until answered; notification sounds play once. Each picker offers only its own kind. The doorbell does not ring while its incoming audio starts muted.</small>
+          <div class="band-label">Do not disturb</div>
+          <label class="check"><input name="dnd_enabled" form="panel-general" type="checkbox" ${dnd.enabled ? "checked" : ""}> Quiet hours</label>
+          <div class="hours"><label>From<input name="dnd_from" form="panel-general" type="time" value="${escapeHtml(String(dnd.from))}"></label><label>To<input name="dnd_to" form="panel-general" type="time" value="${escapeHtml(String(dnd.to))}"></label></div>
+          <small>A window may cross midnight. Inside it, each kind does what is set below.</small>
+          ${behaviour("Doorbell", "dnd_doorbell", doorbell.dnd)}
+          ${behaviour("Intercom", "dnd_intercom", intercom.dnd)}
+          ${behaviour("Notification", "dnd_normal", normal.dnd)}
+          <label>Important<span class="fixed-setting">Always rings</span></label>
+          <small>Important notifications ignore quiet hours &mdash; that is what they are for. Send routine news as a normal notification.</small>
+        </fieldset>`;
+  }
+
   workspaceChrome(tab) {
     const { panel } = this.editor;
     const dirty = this.editor.dirty?.size || 0;
@@ -2146,7 +2221,7 @@ class NSPanelCompanionPanel extends HTMLElement {
         <button type="button" id="save-workspace" class="primary" ${this.busy ? "disabled" : ""}>Save layout</button>
       </div>
       <nav class="tabs" aria-label="Panel configuration">
-        ${[["general", "General"], ["pages", "Pages"], ["doorbell", "Doorbell"], ["intercom", "Intercom"], ["diagnostics", "Diagnostics"]]
+        ${[["general", "General"], ["pages", "Pages"], ["doorbell", "Doorbell"], ["intercom", "Intercom"], ["notifications", "Notifications"], ["diagnostics", "Diagnostics"]]
           .map(([id, label]) => `<button type="button" data-workspace-tab="${id}" class="${tab === id ? "active" : ""}">${label}</button>`).join("")}
       </nav>`;
   }
@@ -2393,8 +2468,6 @@ class NSPanelCompanionPanel extends HTMLElement {
             <label class="check"><input name="talk_extend_enabled" type="checkbox" ${doorbell.talk_extend_enabled !== false ? "checked" : ""}> Extend timeout after hold-to-talk</label>
             <label>Talk extension<input name="talk_extend_seconds" type="number" min="5" max="60" value="${Number(doorbell.talk_extend_ms || 15000) / 1000}"><small>Add 5–60 seconds to the remaining time after each completed hold-to-talk interaction.</small></label>
             <label class="check"><input name="quiet_mode" type="checkbox" ${doorbell.quiet_mode ? "checked" : ""}> Start with incoming audio muted</label>
-            ${soundField("Chime", "chime", doorbell.chime, "chime_volume", doorbell.chime_volume)}
-            <small>The chime does not play while incoming audio is muted above.</small>
             <label>Talkback microphone gain<input name="talkback_gain" type="number" min="50" max="300" value="${Number(doorbell.talkback_gain ?? 100)}"> %</label>
             <small>Android does not let an app set the microphone's gain, so this scales the captured sound instead. Above about 200% a raised voice will clip.</small>
           </fieldset>
@@ -2407,8 +2480,6 @@ class NSPanelCompanionPanel extends HTMLElement {
         <div class="settings-card">
           <label class="check"><input name="intercom_enabled" form="panel-general" type="checkbox" ${layout.intercom?.enabled ? "checked" : ""}> Take part in the panel intercom</label>
           <small>A panel with this off is not listed on other panels, cannot be called, and will not ring &mdash; and its intercom pages are not sent to it.</small>
-          ${soundField("Ring sound", "intercom_ring", layout.intercom?.ring, "intercom_ring_volume", layout.intercom?.ring_volume, "panel-general")}
-          <small>The panel that rings is the one this is set on, so each panel carries its own.</small>
           <label class="check"><input name="intercom_noise_suppression" form="panel-general" type="checkbox" ${layout.intercom?.noise_suppression !== false ? "checked" : ""}> Noise suppression</label>
           <label class="check"><input name="intercom_auto_gain" form="panel-general" type="checkbox" ${layout.intercom?.auto_gain !== false ? "checked" : ""}> Automatic gain</label>
           <small>This panel has no audio effects of its own, so both are done in software by WebRTC. Turning them off is worth trying only if a call sounds processed or the far end cuts in and out.</small>
@@ -2417,8 +2488,20 @@ class NSPanelCompanionPanel extends HTMLElement {
         <aside class="stack">
           <div><span class="section-label">Doorbell talkback</span>
             <div class="band"><div class="row interactive" data-workspace-tab-link="doorbell" role="button" tabindex="0">
-              <span class="grow">Microphone gain and chime</span><span class="accent">Doorbell →</span></div></div>
+              <span class="grow">Microphone gain</span><span class="accent">Doorbell →</span></div></div>
             <p class="t-small" style="margin-top:10px">The doorbell's hold-to-talk is a separate path from the intercom and is configured with the doorbell.</p>
+          </div>
+        </aside>
+        </div>
+      </section>
+      <section class="workspace-panel" data-workspace-panel="notifications" ${tab === "notifications" ? "" : "hidden"}>
+        <div class="workspace-grid"><div class="stack">
+        <div class="workspace-intro"><h3>Notifications</h3><p>Every sound this panel makes, and what each kind of alert does during quiet hours.</p></div>
+        ${this.notificationSettings(layout)}
+        </div>
+        <aside class="stack">
+          <div><span class="section-label">Sending one</span>
+            <p class="t-small">Automations send with the <b>NSPanel Companion: Notify panels</b> action, targeting this panel, its area, or any of its entities. A panel that is offline when one is sent does not receive it later.</p>
           </div>
         </aside>
         </div>
@@ -3068,6 +3151,7 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
    box again, sized like every other field here. min-width:0 lets it shrink,
    and the 140px basis lets the pair stack rather than overflow if the card
    is ever narrower than both of them. */
+.fixed-setting { grid-column:2; grid-row:1; color:var(--muted); }
 .hours { display:flex; flex-wrap:wrap; gap:var(--s4); align-items:end; }
 .hours > label { display:flex; flex-direction:column; gap:6px; min-width:0;
   font:400 14px/1.4 var(--font); }
@@ -3545,7 +3629,8 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
   .settings-card > label > :is(input,select,textarea),
   .workspace-panel fieldset > label > :is(input,select,textarea),
   .settings-card > label > .select-wrap, .workspace-panel fieldset > label > .select-wrap,
-  .settings-card > label > .sound-row, .workspace-panel fieldset > label > .sound-row {
+  .settings-card > label > .sound-row, .workspace-panel fieldset > label > .sound-row,
+  .workspace-panel fieldset > label > .fixed-setting {
     grid-column:1; grid-row:auto; width:100%; }
   /* The save bar stays put. On a long settings page it used to scroll away,
      and the one thing someone needs after a change is the button that keeps
