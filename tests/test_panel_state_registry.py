@@ -56,6 +56,20 @@ class RecordState(unittest.TestCase):
         registry.record_state("a", {"rssi": -47})
         self.assertIn(panel_state.signal_for("a"), [signal for signal, _ in SENT])
 
+    def test_the_admin_list_still_sees_the_link(self):
+        # panel_state replaces panel_link on an updated panel; without this
+        # the wifi column in the admin list would freeze at its last value.
+        registry = self.registry()
+        registry.record_state("a", {"rssi": -61, "ssid": "home", "frequency_mhz": 5180})
+        self.assertEqual(-61, registry._links["a"]["rssi"])
+        self.assertEqual(5180, registry._links["a"]["frequency_mhz"])
+
+    def test_a_report_without_wifi_leaves_the_link_alone(self):
+        registry = self.registry()
+        registry.record_link("a", {"rssi": -50})
+        registry.record_state("a", {"approach": True})
+        self.assertEqual(-50, registry._links["a"]["rssi"])
+
 
 if __name__ == "__main__":
     unittest.main()

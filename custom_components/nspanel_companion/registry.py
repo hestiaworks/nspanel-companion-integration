@@ -652,6 +652,10 @@ class PanelRegistry:
             return
         state = clean_state(raw)
         self._states[panel_id] = state
+        # The same wifi facts panel_link used to carry, so the admin list
+        # keeps its column once panels stop sending that message.
+        if "rssi" in raw:
+            self.record_link(panel_id, raw)
         if state.app_version:
             self._note_app_version(panel_id, state.app_version)
         async_dispatcher_send(self._hass, signal_for(panel_id), state)
