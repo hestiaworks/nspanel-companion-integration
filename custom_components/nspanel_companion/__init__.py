@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers import config_validation as cv
@@ -30,6 +31,14 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 #: behind this, so the interval is about how soon a badge appears rather than
 #: about load.
 RELEASE_CHECK_INTERVAL = timedelta(hours=6)
+
+#: The panel's own entities. Everything but the wifi signal and the ambient
+#: light level ships disabled, so enabling one is a decision someone made on
+#: the device page rather than a list nobody asked for.
+PLATFORMS = [
+    Platform.BINARY_SENSOR,
+    Platform.SENSOR,
+]
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -70,11 +79,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_track_time_interval(hass, check_release, RELEASE_CHECK_INTERVAL)
     )
     entry.async_create_background_task(hass, check_release(), "nspanel_release_check")
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload one config entry."""
+    await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     async_unregister_panel(hass)
     return True
