@@ -14,9 +14,13 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 
 from .const import DATA_PANEL_SOCKETS, DOMAIN, STORAGE_KEY, STORAGE_VERSION
+from .panel_state import (
+    SIGNAL_PANEL_ADDED, PanelState, clean_state, signal_for,
+)
 from .layout import validate_layout, without_example_stream_url
 
 DEVICE_ID = re.compile(r"^[A-Za-z0-9._:-]{4,128}$")
@@ -107,6 +111,11 @@ class PanelRegistry:
         #: would be worse than none — and writing it to storage every half
         #: minute would churn the disk for nothing.
         self._links: dict[str, dict[str, Any]] = {}
+        #: The last full report from each panel, in memory for the same
+        #: reason the link reading is: these are live facts about a radio
+        #: and a room, and one that outlived a restart would be worse than
+        #: none at all.
+        self._states: dict[str, PanelState] = {}
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
@@ -620,6 +629,30 @@ class PanelRegistry:
             for item in sorted(self._panels.values(), key=lambda item: item["name"].lower())
         ]
 
+    def record_state(self, panel_id: str, raw: dict[str, Any]) -> None:
+        """Note what a panel says about itself, and wake its entities."""
+        if panel_id not in self._panels:
+            return
+        state = clean_state(raw)
+        self._states[panel_id] = state
+        if state.app_version:
+            self._note_app_version(panel_id, state.app_version)
+        async_dispatcher_send(self._hass, signal_for(panel_id), state)
+
+    def panel_state(self, panel_id: str) -> PanelState:
+        """The last report, or an empty one from a panel that has said nothing."""
+        return self._states.get(panel_id, PanelState())
+
+    def _note_app_version(self, panel_id: str, version: str) -> None:
+        """Keep the device's sw_version current.
+
+        A panel left on an old build was previously invisible without ADB.
+        """
+        registry = dr.async_get(self._hass)
+        device = registry.async_get_device(identifiers={(DOMAIN, panel_id)})
+        if device is not None and device.sw_version != version:
+            registry.async_update_device(device.id, sw_version=version)
+
     def record_link(self, panel_id: str, reading: dict[str, Any]) -> None:
         """Note what a panel says about its wifi.
 
@@ -671,6 +704,9 @@ class PanelRegistry:
             configuration_url="homeassistant://nspanel-companion",
         )
         await self._save()
+        # Entity platforms build from the panel list at setup, so a panel
+        # paired afterwards would have no entities until the next restart.
+        async_dispatcher_send(self._hass, SIGNAL_PANEL_ADDED, panel_id)
         return self._public(record), token
 
     async def async_pair(self, name: str, device_id: str) -> tuple[dict[str, Any], str]:

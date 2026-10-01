@@ -251,6 +251,7 @@ class StalePairing(unittest.IsolatedAsyncioTestCase):
         registry = PanelRegistry.__new__(PanelRegistry)
         registry._talkback = talkback
         registry._links = {}
+        registry._states = {}
         registry._hass = None
 
         class Response:

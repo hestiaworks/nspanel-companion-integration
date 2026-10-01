@@ -470,6 +470,12 @@ class PanelWebSocketView(HomeAssistantView):
                             level if level in {"info", "warn", "error"} else "info",
                         )
                         continue
+                    if data.get("type") == "panel_state":
+                        # Everything the panel can say about itself. The
+                        # older panel_link message below is the same thing
+                        # with fewer fields, kept while panels update.
+                        registry.record_state(panel_id, data)
+                        continue
                     if data.get("type") == "panel_link":
                         # What the panel's radio currently sees. Held in
                         # memory and shown in the admin list, because a weak
