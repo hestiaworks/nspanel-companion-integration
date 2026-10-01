@@ -37,6 +37,9 @@ RELEASE_CHECK_INTERVAL = timedelta(hours=6)
 #: the device page rather than a list nobody asked for.
 PLATFORMS = [
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.LIGHT,
+    Platform.SELECT,
     Platform.SENSOR,
 ]
 

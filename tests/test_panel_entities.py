@@ -98,3 +98,63 @@ class Platforms(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Controls(unittest.TestCase):
+    """Commands reach a listening panel, or nowhere at all."""
+
+    REGISTRY = (COMPONENT / "registry.py").read_text()
+    LIGHT = (COMPONENT / "light.py").read_text()
+    SELECT = (COMPONENT / "select.py").read_text()
+    BUTTON = (COMPONENT / "button.py").read_text()
+
+    def test_a_command_is_not_queued_for_an_absent_panel(self):
+        # A command held for an absent panel arrives whenever it next
+        # connects, which for a screen is a light coming on in an empty room.
+        command = re.search(r"async def async_command.*?\n        return True",
+                            self.REGISTRY, re.S).group(0)
+        self.assertIn("if socket is None or socket.closed:", command)
+        self.assertIn("return False", command)
+
+    def test_every_control_is_disabled_by_default(self):
+        for source, names in (
+            (self.LIGHT, ["PanelDisplay"]),
+            (self.BUTTON, ["PanelRestart", "PanelReloadLayout"]),
+            (self.SELECT, ["PanelPage"]),
+        ):
+            for name in names:
+                self.assertIn(
+                    "_attr_entity_registry_enabled_default = False", block(source, name),
+                    f"{name} would appear without anyone asking for it",
+                )
+
+    def test_brightness_is_converted_between_the_two_scales(self):
+        # Home Assistant counts 0-255, the panel counts percent. Sending one
+        # as the other makes 100% arrive as 39%.
+        body = block(self.LIGHT, "PanelDisplay")
+        self.assertIn("255 / 100", body)
+        self.assertIn("100 / 255", body)
+
+    def test_the_page_select_offers_only_pages_that_exist(self):
+        body = block(self.SELECT, "PanelPage")
+        self.assertIn("layout.get(\"pages\"", body)
+
+    def test_a_page_the_layout_lost_is_not_reported_as_current(self):
+        # Home Assistant logs an invalid option on every state write.
+        self.assertIn("page if page in self.options else None",
+                      block(self.SELECT, "PanelPage"))
+
+
+class Translations(unittest.TestCase):
+    def test_every_translation_key_has_a_name(self):
+        import json
+        names = json.loads(
+            (COMPONENT / "translations/en.json").read_text())["entity"]
+        keys = set()
+        for path in COMPONENT.glob("*.py"):
+            keys |= set(re.findall(r'_attr_translation_key = "(\w+)"', path.read_text()))
+        declared = {key for platform in names.values() for key in platform}
+        self.assertEqual(
+            set(), keys - declared,
+            "entities whose name would show as a raw translation key",
+        )

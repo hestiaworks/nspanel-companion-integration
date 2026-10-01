@@ -629,6 +629,23 @@ class PanelRegistry:
             for item in sorted(self._panels.values(), key=lambda item: item["name"].lower())
         ]
 
+    async def async_command(self, panel_id: str, command: str, **fields: Any) -> bool:
+        """Tell a panel to do something, if it is listening.
+
+        Deliberately not queued. A command held for an absent panel arrives
+        whenever it next connects, which for a screen is a light coming on
+        in an empty room hours later.
+        """
+        sockets = self._hass.data.get(DOMAIN, {}).get(DATA_PANEL_SOCKETS, {})
+        socket = sockets.get(panel_id)
+        if socket is None or socket.closed:
+            return False
+        try:
+            await socket.send_json({"type": "command", "command": command, **fields})
+        except Exception:  # noqa: BLE001 - a panel that went away mid-send
+            return False
+        return True
+
     def record_state(self, panel_id: str, raw: dict[str, Any]) -> None:
         """Note what a panel says about itself, and wake its entities."""
         if panel_id not in self._panels:
