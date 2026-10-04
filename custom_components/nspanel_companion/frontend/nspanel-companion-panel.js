@@ -1432,6 +1432,12 @@ class NSPanelCompanionPanel extends HTMLElement {
       button.addEventListener("click", () => this.previewSound(button)));
     this.shadowRoot.querySelectorAll("[data-sound-panel]").forEach((button) =>
       button.addEventListener("click", () => this.playOnPanel(button)));
+    // Dimmed, not disabled, while quiet hours are off: a disabled field is
+    // left out of the form, which would reset these choices on the next save.
+    this.shadowRoot.querySelector('input[name="dnd_enabled"]')?.addEventListener("change", (event) => {
+      this.shadowRoot.querySelectorAll("[data-quiet-behaviour]").forEach((row) =>
+        row.classList.toggle("off", !event.target.checked));
+    });
     this.shadowRoot.querySelectorAll("[data-notification-test]").forEach((button) =>
       button.addEventListener("click", () => this.testNotification(button.dataset.notificationTest)));
     this.shadowRoot.querySelector("[data-restart-panel]")?.addEventListener("click", () => this.restartPanel(false));
@@ -2276,7 +2282,8 @@ class NSPanelCompanionPanel extends HTMLElement {
     const normal = kind("normal", { sound: "notify_soft", volume: 60, dnd: "silent" });
     const important = kind("important", { sound: "notify_alert", volume: 80 });
     const dnd = { enabled: false, from: "22:00", to: "07:00", ...(block.dnd || {}) };
-    const behaviour = (label, name, value) => `<label>${label}<select name="${name}" form="panel-general">${DND_BEHAVIOURS.map((option) => `<option value="${option.value}" ${value === option.value ? "selected" : ""}>${option.label}</option>`).join("")}</select></label>`;
+    const off = dnd.enabled ? "" : " off";
+    const behaviour = (label, name, value) => `<label class="quiet-behaviour${off}" data-quiet-behaviour>${label}<select name="${name}" form="panel-general">${DND_BEHAVIOURS.map((option) => `<option value="${option.value}" ${value === option.value ? "selected" : ""}>${option.label}</option>`).join("")}</select></label>`;
     return `<fieldset class="notifications" aria-label="Notifications"><div class="band-label">Sounds</div>
           ${soundField("Doorbell", "notify_doorbell_sound", doorbell.sound, "notify_doorbell_volume", doorbell.volume, "panel-general", RING_SOUNDS, true)}
           ${soundField("Intercom", "notify_intercom_sound", intercom.sound, "notify_intercom_volume", intercom.volume, "panel-general", RING_SOUNDS, true)}
@@ -2286,11 +2293,12 @@ class NSPanelCompanionPanel extends HTMLElement {
           <div class="band-label">Do not disturb</div>
           <label class="check"><input name="dnd_enabled" form="panel-general" type="checkbox" ${dnd.enabled ? "checked" : ""}> Quiet hours</label>
           <div class="hours"><label>From<input name="dnd_from" form="panel-general" type="time" value="${escapeHtml(String(dnd.from))}"></label><label>To<input name="dnd_to" form="panel-general" type="time" value="${escapeHtml(String(dnd.to))}"></label></div>
-          <small>A window may cross midnight. Inside it, each kind does what is set below.</small>
+          <small>A window may cross midnight. Outside it, or while quiet hours are off, everything rings with the sounds above.</small>
+          <div class="band-label">During quiet hours</div>
           ${behaviour("Doorbell", "dnd_doorbell", doorbell.dnd)}
           ${behaviour("Intercom", "dnd_intercom", intercom.dnd)}
           ${behaviour("Notification", "dnd_normal", normal.dnd)}
-          <label>Important<span class="fixed-setting">Always rings</span></label>
+          <label class="quiet-behaviour${off}" data-quiet-behaviour>Important<span class="fixed-setting">Always rings</span></label>
           <small>Important notifications ignore quiet hours &mdash; that is what they are for. Send routine news as a normal notification.</small>
         </fieldset>
         <div class="settings-card notification-tests">
@@ -3250,6 +3258,9 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
    and the 140px basis lets the pair stack rather than overflow if the card
    is ever narrower than both of them. */
 .fixed-setting { grid-column:2; grid-row:1; color:var(--muted); }
+.quiet-behaviour { transition:opacity .15s; }
+.quiet-behaviour.off { opacity:.45; }
+@media (prefers-reduced-motion: reduce) { .quiet-behaviour { transition:none; } }
 .hours { display:flex; flex-wrap:wrap; gap:var(--s4); align-items:end; }
 .hours > label { display:flex; flex-direction:column; gap:6px; min-width:0;
   font:400 14px/1.4 var(--font); }
