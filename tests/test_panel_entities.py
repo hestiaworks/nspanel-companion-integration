@@ -167,6 +167,44 @@ class Controls(unittest.TestCase):
                       block(self.SELECT, "PanelPage"))
 
 
+class NotifyTargets(unittest.TestCase):
+    """Panels as notify entities, so blueprints can pick them beside a phone.
+
+    notify.send_message carries a title and a message only, so the entity is
+    how a sender chooses importance: one entity for each.
+    """
+
+    def source(self):
+        path = COMPONENT / "notify.py"
+        self.assertTrue(path.exists(), "no notify platform")
+        return path.read_text()
+
+    def test_one_entity_per_importance(self):
+        source = self.source()
+        self.assertIn('importance="normal"', block(source, "PanelNotifications"))
+        self.assertIn('importance="important"', block(source, "PanelImportantNotifications"))
+
+    def test_they_deliver_the_way_the_action_does(self):
+        # Same payload, same delivery: quiet hours, sounds and the panel's
+        # list behave exactly as for nspanel_companion.notify.
+        source = self.source()
+        self.assertIn("from .notify_service import deliver, payload", source)
+        self.assertIn("await deliver(", source)
+
+    def test_long_text_is_cut_to_fit_rather_than_refused(self):
+        source = self.source()
+        self.assertIn("[:1000]", source)
+        self.assertIn("[:120]", source)
+
+    def test_they_are_on_by_default(self):
+        # Nothing is sent until something sends; a blueprint should find
+        # them without a trip to the device page first.
+        self.assertNotIn("_attr_entity_registry_enabled_default = False", self.source())
+
+    def test_the_platform_is_loaded(self):
+        self.assertIn("Platform.NOTIFY", (COMPONENT / "__init__.py").read_text())
+
+
 class Icons(unittest.TestCase):
     def test_every_entity_has_an_icon(self):
         # Without one, the light level shows Home Assistant's generic eye.

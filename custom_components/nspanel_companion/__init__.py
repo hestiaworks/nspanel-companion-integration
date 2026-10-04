@@ -41,6 +41,7 @@ RELEASE_CHECK_INTERVAL = timedelta(hours=6)
 PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
+    Platform.NOTIFY,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,

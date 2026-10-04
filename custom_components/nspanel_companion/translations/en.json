@@ -50,6 +50,14 @@
       "brightness": {
         "name": "Brightness"
       }
+    },
+    "notify": {
+      "notifications": {
+        "name": "Notifications"
+      },
+      "important_notifications": {
+        "name": "Important notifications"
+      }
     }
   },
   "services": {

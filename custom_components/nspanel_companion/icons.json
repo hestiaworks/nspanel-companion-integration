@@ -44,6 +44,14 @@
       "reload_layout": {
         "default": "mdi:refresh"
       }
+    },
+    "notify": {
+      "notifications": {
+        "default": "mdi:bell-outline"
+      },
+      "important_notifications": {
+        "default": "mdi:bell-alert"
+      }
     }
   }
 }
