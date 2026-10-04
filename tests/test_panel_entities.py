@@ -46,8 +46,13 @@ class EntityDefaults(unittest.TestCase):
         self.assertNotIn("ILLUMINANCE", body)
         self.assertNotIn("native_unit_of_measurement", body)
 
-    def test_wifi_signal_is_diagnostic(self):
-        self.assertIn("EntityCategory.DIAGNOSTIC", block(self.SENSOR, "PanelWifiSignal"))
+    def test_no_entity_is_filed_away_as_diagnostic_or_config(self):
+        # Home Assistant's area page shows only uncategorised entities, and
+        # the owner wants every panel entity they enable under the panel's
+        # own heading there.
+        for name in ("sensor.py", "binary_sensor.py", "button.py", "select.py", "switch.py", "number.py"):
+            with self.subTest(module=name):
+                self.assertNotIn("EntityCategory", (COMPONENT / name).read_text())
 
     def test_the_connectivity_sensor_answers_while_the_panel_is_away(self):
         # Every other entity goes unavailable with the panel. This one must
@@ -104,7 +109,8 @@ class Controls(unittest.TestCase):
     """Commands reach a listening panel, or nowhere at all."""
 
     REGISTRY = (COMPONENT / "registry.py").read_text()
-    LIGHT = (COMPONENT / "light.py").read_text()
+    SWITCH = (COMPONENT / "switch.py").read_text() if (COMPONENT / "switch.py").exists() else ""
+    NUMBER = (COMPONENT / "number.py").read_text() if (COMPONENT / "number.py").exists() else ""
     SELECT = (COMPONENT / "select.py").read_text()
     BUTTON = (COMPONENT / "button.py").read_text()
 
@@ -118,7 +124,8 @@ class Controls(unittest.TestCase):
 
     def test_every_control_is_disabled_by_default(self):
         for source, names in (
-            (self.LIGHT, ["PanelDisplay"]),
+            (self.SWITCH, ["PanelScreen"]),
+            (self.NUMBER, ["PanelBrightness"]),
             (self.BUTTON, ["PanelRestart", "PanelReloadLayout"]),
             (self.SELECT, ["PanelPage"]),
         ):
@@ -128,12 +135,27 @@ class Controls(unittest.TestCase):
                     f"{name} would appear without anyone asking for it",
                 )
 
-    def test_brightness_is_converted_between_the_two_scales(self):
-        # Home Assistant counts 0-255, the panel counts percent. Sending one
-        # as the other makes 100% arrive as 39%.
-        body = block(self.LIGHT, "PanelDisplay")
-        self.assertIn("255 / 100", body)
-        self.assertIn("100 / 255", body)
+    def test_the_screen_is_a_switch_not_a_light(self):
+        # A light is pulled into the area page's Lights section and counted
+        # among the room's lamps; turning the room off would blank the panel.
+        self.assertFalse((COMPONENT / "light.py").exists())
+        self.assertNotIn("Platform.LIGHT", (COMPONENT / "__init__.py").read_text())
+        body = block(self.SWITCH, "PanelScreen")
+        self.assertIn('"set_screen", on=True', body)
+        self.assertIn('"set_screen", on=False', body)
+
+    def test_brightness_is_a_percent_slider(self):
+        body = block(self.NUMBER, "PanelBrightness")
+        self.assertIn("_attr_native_min_value = 1", body)
+        self.assertIn("_attr_native_max_value = 100", body)
+        self.assertIn("NumberMode.SLIDER", body)
+        self.assertIn("PERCENTAGE", body)
+
+    def test_the_old_display_light_is_cleared_away(self):
+        # Testers who enabled it would otherwise keep a dead entity.
+        source = (COMPONENT / "__init__.py").read_text()
+        self.assertIn("async_entries_for_config_entry", source)
+        self.assertIn('entity.domain == "light"', source)
 
     def test_the_page_select_offers_only_pages_that_exist(self):
         body = block(self.SELECT, "PanelPage")
@@ -143,6 +165,18 @@ class Controls(unittest.TestCase):
         # Home Assistant logs an invalid option on every state write.
         self.assertIn("page if page in self.options else None",
                       block(self.SELECT, "PanelPage"))
+
+
+class Icons(unittest.TestCase):
+    def test_every_entity_has_an_icon(self):
+        # Without one, the light level shows Home Assistant's generic eye.
+        import json
+        icons = json.loads((COMPONENT / "icons.json").read_text())["entity"]
+        declared = {key for platform in icons.values() for key in platform}
+        keys = set()
+        for path in COMPONENT.glob("*.py"):
+            keys |= set(re.findall(r'_attr_translation_key = "(\w+)"', path.read_text()))
+        self.assertEqual(set(), keys - declared)
 
 
 class Translations(unittest.TestCase):

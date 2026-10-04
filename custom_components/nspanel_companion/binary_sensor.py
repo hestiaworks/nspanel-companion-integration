@@ -7,7 +7,6 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -31,7 +30,6 @@ class PanelConnected(PanelEntity, BinarySensorEntity):
 
     _attr_translation_key = "connected"
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
 
     def __init__(self, registry, panel_id: str) -> None:

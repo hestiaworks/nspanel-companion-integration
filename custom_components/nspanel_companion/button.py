@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -27,7 +26,6 @@ class PanelRestart(PanelEntity, ButtonEntity):
     """Restart the panel app, without ADB and without a ladder."""
 
     _attr_translation_key = "restart_app"
-    _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
 
     def __init__(self, registry, panel_id: str) -> None:
@@ -42,7 +40,6 @@ class PanelReloadLayout(PanelEntity, ButtonEntity):
     """Fetch the layout again, for a panel that missed a publish."""
 
     _attr_translation_key = "reload_layout"
-    _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
 
     def __init__(self, registry, panel_id: str) -> None:

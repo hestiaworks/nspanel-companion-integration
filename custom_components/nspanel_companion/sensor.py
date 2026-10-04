@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT, EntityCategory
+from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -34,7 +34,6 @@ class PanelWifiSignal(PanelEntity, SensorEntity):
     _attr_translation_key = "wifi_signal"
     _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, registry, panel_id: str) -> None:
         super().__init__(registry, panel_id)

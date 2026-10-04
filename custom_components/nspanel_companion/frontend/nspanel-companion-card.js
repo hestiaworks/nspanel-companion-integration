@@ -8,7 +8,7 @@
 /** The panel's entities, by translation key. Renaming an entity moves none of these. */
 export const ROLES = [
   "wifi_signal", "ambient_light", "approach", "connected",
-  "display", "page", "restart_app", "reload_layout",
+  "screen", "brightness", "page", "restart_app", "reload_layout",
 ];
 
 const DOMAIN = "nspanel_companion";
@@ -353,15 +353,17 @@ export class NSPanelCompanionCard extends Base {
     return `<div class="row"><div class="label">Approach</div><div class="grow">${near ? "Someone nearby" : "Nobody nearby"} · ${agoText(Date.parse(state.last_changed), Date.now())}</div></div>`;
   }
 
+  /** Screen on/off and brightness, each drawn only when its entity is enabled. */
   _display(roles) {
-    const state = this._state(roles.display);
-    if (!state) return "";
-    const on = state.state === "on";
-    const percent = Math.round((state.attributes?.brightness ?? 0) / 2.55);
+    const screen = this._state(roles.screen);
+    const level = this._state(roles.brightness);
+    if (!screen && !level) return "";
+    const percent = Math.round(Number(level?.state));
+    const known = Number.isFinite(percent);
     return `<div class="row"><div class="label">Display</div>
-      <input type="checkbox" id="display-on" aria-label="Display on" ${on ? "checked" : ""}>
-      <input type="range" id="display-level" min="1" max="100" value="${percent || 1}" aria-label="Brightness">
-      <div class="pct" id="display-pct">${on && percent ? `${percent}%` : "—"}</div></div>`;
+      ${screen ? `<input type="checkbox" id="display-on" aria-label="Screen on" ${screen.state === "on" ? "checked" : ""}>` : ""}
+      ${level ? `<input type="range" id="display-level" min="1" max="100" value="${known ? percent : 1}" aria-label="Brightness">
+      <div class="pct" id="display-pct">${known ? `${percent}%` : "—"}</div>` : `<div class="grow"></div>`}</div>`;
   }
 
   _page(roles) {
@@ -383,8 +385,8 @@ export class NSPanelCompanionCard extends Base {
   _bind(roles) {
     const root = this.shadowRoot;
     root.getElementById("display-on")?.addEventListener("change", (event) => {
-      if (event.target.checked) this._call("light", "turn_on", { entity_id: roles.display });
-      else this._call("light", "turn_off", { entity_id: roles.display });
+      if (event.target.checked) this._call("switch", "turn_on", { entity_id: roles.screen });
+      else this._call("switch", "turn_off", { entity_id: roles.screen });
     });
     const level = root.getElementById("display-level");
     if (level) {
@@ -395,7 +397,7 @@ export class NSPanelCompanionCard extends Base {
         root.getElementById("display-pct").textContent = `${level.value}%`;
       });
       level.addEventListener("change", () => {
-        this._call("light", "turn_on", { entity_id: roles.display, brightness_pct: Number(level.value) });
+        this._call("number", "set_value", { entity_id: roles.brightness, value: Number(level.value) });
         this._release("drag");
       });
       // A drag that ends where it began fires no change event; without these

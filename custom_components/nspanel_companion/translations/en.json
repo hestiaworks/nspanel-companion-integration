@@ -28,11 +28,6 @@
         "name": "Approach"
       }
     },
-    "light": {
-      "display": {
-        "name": "Display"
-      }
-    },
     "button": {
       "restart_app": {
         "name": "Restart app"
@@ -44,6 +39,16 @@
     "select": {
       "page": {
         "name": "Page"
+      }
+    },
+    "switch": {
+      "screen": {
+        "name": "Screen"
+      }
+    },
+    "number": {
+      "brightness": {
+        "name": "Brightness"
       }
     }
   },

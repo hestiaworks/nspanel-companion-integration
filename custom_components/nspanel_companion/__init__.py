@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 
 from .const import DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .frontend import async_register_panel, async_setup_frontend_assets, async_unregister_panel
@@ -35,13 +35,16 @@ RELEASE_CHECK_INTERVAL = timedelta(hours=6)
 
 #: The panel's own entities. Everything but the wifi signal and the ambient
 #: light level ships disabled, so enabling one is a decision someone made on
-#: the device page rather than a list nobody asked for.
+#: the device page rather than a list nobody asked for. None is filed as
+#: diagnostic or config: Home Assistant's area page shows only uncategorised
+#: entities, and every one enabled belongs under the panel's own heading.
 PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
-    Platform.LIGHT,
+    Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
+    Platform.SWITCH,
 ]
 
 
@@ -84,6 +87,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_track_time_interval(hass, check_release, RELEASE_CHECK_INTERVAL)
     )
     entry.async_create_background_task(hass, check_release(), "nspanel_release_check")
+
+    # The screen was a light before it was a switch. A tester who enabled
+    # that light would otherwise keep an entity nothing provides any more.
+    entities = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(entities, entry.entry_id):
+        if entity.domain == "light":
+            entities.async_remove(entity.entity_id)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

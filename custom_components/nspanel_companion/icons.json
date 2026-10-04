@@ -1,0 +1,49 @@
+{
+  "entity": {
+    "sensor": {
+      "wifi_signal": {
+        "default": "mdi:wifi"
+      },
+      "ambient_light": {
+        "default": "mdi:brightness-5"
+      }
+    },
+    "binary_sensor": {
+      "approach": {
+        "default": "mdi:motion-sensor-off",
+        "state": {
+          "on": "mdi:motion-sensor"
+        }
+      },
+      "connected": {
+        "default": "mdi:lan-disconnect",
+        "state": {
+          "on": "mdi:lan-connect"
+        }
+      }
+    },
+    "switch": {
+      "screen": {
+        "default": "mdi:monitor-dashboard"
+      }
+    },
+    "number": {
+      "brightness": {
+        "default": "mdi:brightness-6"
+      }
+    },
+    "select": {
+      "page": {
+        "default": "mdi:book-open-page-variant-outline"
+      }
+    },
+    "button": {
+      "restart_app": {
+        "default": "mdi:restart"
+      },
+      "reload_layout": {
+        "default": "mdi:refresh"
+      }
+    }
+  }
+}

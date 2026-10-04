@@ -53,12 +53,12 @@ class WifiBand(unittest.TestCase):
 ENTITIES = {
     "sensor.lr_wifi": {"entity_id": "sensor.lr_wifi", "device_id": "dev-lr",
                        "platform": "nspanel_companion", "translation_key": "wifi_signal"},
-    "light.lr_display": {"entity_id": "light.lr_display", "device_id": "dev-lr",
-                         "platform": "nspanel_companion", "translation_key": "display"},
+    "switch.lr_screen": {"entity_id": "switch.lr_screen", "device_id": "dev-lr",
+                         "platform": "nspanel_companion", "translation_key": "screen"},
     "sensor.office_wifi": {"entity_id": "sensor.office_wifi", "device_id": "dev-office",
                            "platform": "nspanel_companion", "translation_key": "wifi_signal"},
-    "light.lamp": {"entity_id": "light.lamp", "device_id": "dev-lr",
-                   "platform": "hue", "translation_key": "display"},
+    "switch.lamp": {"entity_id": "switch.lamp", "device_id": "dev-lr",
+                   "platform": "hue", "translation_key": "screen"},
 }
 
 
@@ -70,12 +70,12 @@ class PanelEntities(unittest.TestCase):
     def test_by_role_not_by_name(self):
         # The owner may rename an entity; its translation key does not move.
         self.assertEqual(
-            {"wifi_signal": "sensor.lr_wifi", "display": "light.lr_display"},
+            {"wifi_signal": "sensor.lr_wifi", "screen": "switch.lr_screen"},
             self.roles("dev-lr"),
         )
 
     def test_another_integrations_entity_on_the_same_device_is_ignored(self):
-        self.assertNotIn("light.lamp", self.roles("dev-lr").values())
+        self.assertNotIn("switch.lamp", self.roles("dev-lr").values())
 
     def test_an_unknown_device_has_no_entities(self):
         # The card then says the panel was not found instead of throwing.
@@ -156,7 +156,7 @@ class CardContract(unittest.TestCase):
         self.assertIn('customElements.get("nspanel-companion-card")', self.source)
 
     def test_it_calls_only_the_services_the_entities_offer(self):
-        for call in ('"light", "turn_on"', '"light", "turn_off"',
+        for call in ('"switch", "turn_on"', '"switch", "turn_off"', '"number", "set_value"',
                      '"select", "select_option"', '"button", "press"'):
             with self.subTest(call=call):
                 self.assertIn(call, self.source)
