@@ -367,6 +367,19 @@ class SettingsAreActuallySaved(unittest.TestCase):
         self.assertNotIn("parentElement", body)
         self.assertIn("this.soundBeside(button)", source[source.index("  previewSound(button) {"):])
 
+    def test_dimmed_rows_do_not_trap_their_open_lists(self):
+        # Opacity (or a filter or transform) makes a row its own layer: the
+        # open list inside it turned see-through, and the rows below were
+        # drawn over it. Dim the text and the field instead.
+        import re
+        source = self.PANEL.read_text()
+        rules = re.findall(r"\.quiet-behaviour[^{]*\{([^}]*)\}", source)
+        self.assertTrue(rules, "no quiet-behaviour rules found")
+        for body in rules:
+            for trap in ("opacity", "filter", "transform", "isolation", "z-index"):
+                with self.subTest(trap=trap):
+                    self.assertNotIn(trap, body)
+
     def test_the_old_sound_controls_are_gone(self):
         # One place for every sound: a second picker for the same setting
         # would publish whichever was read last.

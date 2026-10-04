@@ -3266,9 +3266,10 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
    and the 140px basis lets the pair stack rather than overflow if the card
    is ever narrower than both of them. */
 .fixed-setting { grid-column:2; grid-row:1; color:var(--muted); }
-.quiet-behaviour { transition:opacity .15s; }
-.quiet-behaviour.off { opacity:.45; }
-@media (prefers-reduced-motion: reduce) { .quiet-behaviour { transition:none; } }
+/* Greyed, not faded: opacity makes the row its own layer, which turned its
+   open list see-through and let the rows below draw over it. */
+.quiet-behaviour.off { color:var(--disabled); }
+.quiet-behaviour.off .select-field, .quiet-behaviour.off .fixed-setting { color:var(--disabled); }
 .hours { display:flex; flex-wrap:wrap; gap:var(--s4); align-items:end; }
 .hours > label { display:flex; flex-direction:column; gap:6px; min-width:0;
   font:400 14px/1.4 var(--font); }
