@@ -277,19 +277,23 @@ class PanelRegistryTest(unittest.IsolatedAsyncioTestCase):
         registry._links = {}
         registry._states = {}
         registry._hass = object()
+        registry._config_entry_id = "entry-1"
         registry._panels = {"panel-abcd": {
             "panel_id": "panel-abcd", "device_id": "panel-abcd", "name": "Old name",
         }}
         registry._save = AsyncMock()
         device = Mock(id="device-1")
         fake_device_registry = Mock()
-        fake_device_registry.async_get_device.return_value = device
+        # The scoped lookup Home Assistant now requires, not the deprecated one.
+        fake_device_registry.async_get_device_by_identifier.return_value = device
         device_registry.async_get = Mock(return_value=fake_device_registry)
 
         public = await registry.async_rename("panel-abcd", "  Living   room  ")
 
         self.assertEqual("Living room", public["name"])
         fake_device_registry.async_update_device.assert_called_once_with("device-1", name_by_user="Living room")
+        fake_device_registry.async_get_device_by_identifier.assert_called_once_with(
+            ("nspanel_companion", "panel-abcd"), "entry-1")
         registry._save.assert_awaited_once()
 
     async def test_rename_rejects_empty_name(self):

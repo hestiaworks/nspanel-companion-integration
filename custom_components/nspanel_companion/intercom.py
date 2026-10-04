@@ -130,3 +130,21 @@ class CallBook:
                 self._calls.pop(call_id, None)
                 told.extend(other for other in pair if other != panel_id)
         return told
+
+
+async def send_quietly(socket: Any, payload: dict[str, Any]) -> bool:
+    """Send to a panel's socket, or quietly not at all.
+
+    A socket can pass the closed check and still be closing by the time the
+    write lands — every panel at once, whenever Home Assistant stops. That
+    panel is gone either way and gets a fresh roster when it reconnects; an
+    exception from a background send would only be logged as an error.
+    """
+    if socket is None or socket.closed:
+        return False
+    try:
+        await socket.send_json(payload)
+    except ConnectionError:
+        return False
+    return True
+

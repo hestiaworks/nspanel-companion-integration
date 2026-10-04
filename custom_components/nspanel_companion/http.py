@@ -12,7 +12,7 @@ from homeassistant.core import callback
 
 from .pairing import PairingManager
 from .history import RANGE_BUCKETS, bucket, bucket_bounds, summarise
-from .intercom import CallBook, enabled_for, roster_audience, visible_layout
+from .intercom import CallBook, enabled_for, roster_audience, send_quietly, visible_layout
 from .const import DATA_TEST_CALLS, DATA_CALL_BOOK, DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .registry import PanelRegistry
 from .permissions import allowed_entity_ids, service_allowed
@@ -360,20 +360,20 @@ class PanelWebSocketView(HomeAssistantView):
             busy and come back. Without this a third panel kept showing them
             free, and tapping one got a refusal it had no way to anticipate.
             """
+            # Home Assistant stopping closes every panel at once; telling the
+            # closing ones about each other only fails, and they get a fresh
+            # roster when they reconnect.
+            if self._hass.is_stopping:
+                return
             known = intercom_known()
             for viewer in roster_audience(known, departed):
-                target = sockets.get(viewer)
-                if target is None or target.closed:
-                    continue
-                await target.send_json({
+                await send_quietly(sockets.get(viewer), {
                     "type": "intercom_roster",
                     "panels": book.roster(known, viewer=viewer),
                 })
 
         async def tell(target: str, payload: dict) -> None:
-            other = sockets.get(target)
-            if other is not None and not other.closed:
-                await other.send_json(payload)
+            await send_quietly(sockets.get(target), payload)
 
         await send_roster_to_all()
         try:
@@ -531,11 +531,9 @@ class PanelWebSocketView(HomeAssistantView):
             # and the other end is told rather than left listening to a link
             # that will never carry anything again.
             for stranded in book.drop_panel(panel_id):
-                other = sockets.get(stranded)
-                if other is not None and not other.closed:
-                    self._hass.async_create_task(
-                        other.send_json({"type": "intercom_end", "call_id": ""}),
-                    )
+                self._hass.async_create_task(
+                    send_quietly(sockets.get(stranded), {"type": "intercom_end", "call_id": ""}),
+                )
             # And everyone still online is told it has gone, so a panel that
             # is no longer there stops being offered as something to call.
             self._hass.async_create_task(send_roster_to_all(departed=panel_id))

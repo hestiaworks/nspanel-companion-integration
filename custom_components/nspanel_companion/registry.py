@@ -664,13 +664,27 @@ class PanelRegistry:
         """The last report, or an empty one from a panel that has said nothing."""
         return self._states.get(panel_id, PanelState())
 
+    def _panel_device(self, devices, panel_id: str):
+        """This panel's device, among this integration's own.
+
+        Home Assistant deprecated finding a device by identifier alone —
+        identifiers are no longer unique across integrations — and stops
+        supporting it in 2027.8. The scoped call arrived after 2026.6, and
+        this integration supports Home Assistant from 2025.6, so older
+        installs keep the old lookup.
+        """
+        find = getattr(devices, "async_get_device_by_identifier", None)
+        if find is not None:
+            return find((DOMAIN, panel_id), self._config_entry_id)
+        return devices.async_get_device(identifiers={(DOMAIN, panel_id)})
+
     def _note_app_version(self, panel_id: str, version: str) -> None:
         """Keep the device's sw_version current.
 
         A panel left on an old build was previously invisible without ADB.
         """
         registry = dr.async_get(self._hass)
-        device = registry.async_get_device(identifiers={(DOMAIN, panel_id)})
+        device = self._panel_device(registry, panel_id)
         if device is not None and device.sw_version != version:
             registry.async_update_device(device.id, sw_version=version)
 
@@ -800,7 +814,7 @@ class PanelRegistry:
         record = self._require(panel_id)
         record["name"] = clean_name
         device_registry = dr.async_get(self._hass)
-        device = device_registry.async_get_device(identifiers={(DOMAIN, panel_id)})
+        device = self._panel_device(device_registry, panel_id)
         if device:
             device_registry.async_update_device(device.id, name_by_user=clean_name)
         await self._save()
@@ -812,7 +826,7 @@ class PanelRegistry:
             raise ValueError("Unknown panel")
         await self._async_tell_panel_it_was_revoked(panel_id)
         device_registry = dr.async_get(self._hass)
-        device = device_registry.async_get_device(identifiers={(DOMAIN, panel_id)})
+        device = self._panel_device(device_registry, panel_id)
         if device:
             device_registry.async_remove_device(device.id)
         await self._save()
