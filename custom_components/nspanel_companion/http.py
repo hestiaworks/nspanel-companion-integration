@@ -13,7 +13,7 @@ from homeassistant.core import callback
 from .pairing import PairingManager
 from .history import RANGE_BUCKETS, bucket, bucket_bounds, summarise
 from .intercom import CallBook, enabled_for, roster_audience, visible_layout
-from .const import DATA_CALL_BOOK, DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
+from .const import DATA_TEST_CALLS, DATA_CALL_BOOK, DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_WEBSOCKET_REGISTERED, DATA_SCHEDULES, DOMAIN
 from .registry import PanelRegistry
 from .permissions import allowed_entity_ids, service_allowed
 from .schedules import ScheduleManager
@@ -422,6 +422,13 @@ class PanelWebSocketView(HomeAssistantView):
                         continue
                     if data.get("type") in {"intercom_answer", "intercom_decline"}:
                         call_id = str(data.get("call_id", ""))
+                        # A test call from the editor has nobody at the
+                        # other end; answering it ends it rather than
+                        # leaving the panel connecting to no one.
+                        test_calls = self._hass.data.get(DOMAIN, {}).get(DATA_TEST_CALLS)
+                        if test_calls is not None and test_calls.finish(call_id):
+                            await socket.send_json({"type": "intercom_end", "call_id": call_id})
+                            continue
                         other = book.partner(call_id, panel_id)
                         if other is None:
                             continue
@@ -447,6 +454,9 @@ class PanelWebSocketView(HomeAssistantView):
                         continue
                     if data.get("type") == "intercom_end":
                         call_id = str(data.get("call_id", ""))
+                        test_calls = self._hass.data.get(DOMAIN, {}).get(DATA_TEST_CALLS)
+                        if test_calls is not None:
+                            test_calls.finish(call_id)
                         for other in book.close(call_id):
                             if other != panel_id:
                                 await tell(other, {"type": "intercom_end", "call_id": call_id})

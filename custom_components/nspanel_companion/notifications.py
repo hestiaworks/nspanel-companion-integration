@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+import uuid
 
 # Rings: they loop until answered, so they are written to. The three chimes
 # predate the rest; everything else was synthesised for this project, or is
@@ -161,3 +162,49 @@ def normalize_notifications(
         "to": clock(dnd["to"], "do-not-disturb end"),
     }
     return block
+
+
+def _minute(text: str) -> int:
+    hours, minutes = text.split(":")
+    return int(hours) * 60 + int(minutes)
+
+
+def in_quiet_hours(block: dict[str, Any], minute: int) -> bool:
+    """Whether [minute] falls in the block's quiet hours, as the panel reads them.
+
+    Equal ends are no window at all, the reading that cannot silence a
+    doorbell by accident.
+    """
+    dnd = block.get("dnd") or {}
+    if not dnd.get("enabled"):
+        return False
+    start, end = _minute(dnd["from"]), _minute(dnd["to"])
+    if start == end:
+        return False
+    if start < end:
+        return start <= minute < end
+    return minute >= start or minute < end
+
+
+#: How long a test call rings before the server ends it for nobody.
+TEST_CALL_SECONDS = 8
+
+
+class TestCalls:
+    """Intercom calls the editor starts to try a panel's ring.
+
+    Nobody is at the other end, so the server answers for them: an answer or
+    a decline ends the call at once, and so does a timeout. Each ends once,
+    because the timeout and a tap can race.
+    """
+
+    def __init__(self) -> None:
+        self._pending: dict[str, str] = {}
+
+    def start(self, panel_id: str) -> str:
+        call_id = f"test-{uuid.uuid4().hex[:12]}"
+        self._pending[call_id] = panel_id
+        return call_id
+
+    def finish(self, call_id: str) -> bool:
+        return self._pending.pop(call_id, None) is not None

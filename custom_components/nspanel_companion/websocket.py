@@ -10,10 +10,21 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.network import get_url
+from homeassistant.util import dt as dt_util
 
-from .const import DATA_PANEL_SOCKETS, DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DOMAIN
+from .const import DATA_PANEL_SOCKETS, DATA_TEST_CALLS, DATA_PAIRINGS, DATA_PANEL_DISCOVERY, DATA_SCRYPTED_DISCOVERY, DATA_WEBSOCKET_REGISTERED, DOMAIN
 from .layout import doorbell_is_playable
+from .notifications import (
+    DOORBELL_SOUNDS,
+    NOTIFICATION_SOUNDS,
+    TEST_CALL_SECONDS,
+    TestCalls,
+    in_quiet_hours,
+    normalize_notifications,
+)
+from .notify_service import deliver, payload
 from .pairing import PairingManager
 from .panel_discovery import PanelDiscovery
 from .registry import PanelRegistry
@@ -479,30 +490,130 @@ async def ws_test_doorbell(hass, connection, msg) -> None:
     """Send the saved doorbell payload to one panel without a physical ring."""
     try:
         panel_id = msg["panel_id"]
-        layout = _registry(hass).layout(panel_id) or {}
-        doorbell = layout.get("doorbell") or {}
-        if not doorbell_is_playable(doorbell):
-            raise ValueError(
-                "Select a Scrypted camera or enter a media URL, then publish, "
-                "before testing the doorbell",
-            )
-        hass.bus.async_fire("nspanel_doorbell", {
-            "panel_id": panel_id,
-            "stream_base_url": doorbell.get("stream_base_url", ""),
-            "stream_name": doorbell.get("stream_name", ""),
-            "talkback_url": doorbell.get("talkback_url", ""),
-            "talkback_key": doorbell.get("talkback_key", ""),
-            "quiet_mode": doorbell.get("quiet_mode", False),
-            "chime": doorbell.get("chime", "off"),
-            "chime_volume": doorbell.get("chime_volume", 70),
-            "talkback_gain": doorbell.get("talkback_gain", 100),
-            "auto_close_ms": doorbell.get("auto_close_ms", 60000),
-            "talk_extend_ms": doorbell.get("talk_extend_ms", 15000) if doorbell.get("talk_extend_enabled", True) else 0,
-            "test": True,
-        })
+        _fire_test_doorbell(hass, panel_id)
         connection.send_result(msg["id"], {"sent": True, "panel_id": panel_id})
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_doorbell", str(err))
+
+
+def _fire_test_doorbell(hass: HomeAssistant, panel_id: str) -> None:
+    """The saved doorbell, rung at one panel, as a press of the button would."""
+    layout = _registry(hass).layout(panel_id) or {}
+    doorbell = layout.get("doorbell") or {}
+    if not doorbell_is_playable(doorbell):
+        raise ValueError(
+            "Select a Scrypted camera or enter a media URL, then publish, "
+            "before testing the doorbell",
+        )
+    hass.bus.async_fire("nspanel_doorbell", {
+        "panel_id": panel_id,
+        "stream_base_url": doorbell.get("stream_base_url", ""),
+        "stream_name": doorbell.get("stream_name", ""),
+        "talkback_url": doorbell.get("talkback_url", ""),
+        "talkback_key": doorbell.get("talkback_key", ""),
+        "quiet_mode": doorbell.get("quiet_mode", False),
+        "chime": doorbell.get("chime", "off"),
+        "chime_volume": doorbell.get("chime_volume", 70),
+        "talkback_gain": doorbell.get("talkback_gain", 100),
+        "auto_close_ms": doorbell.get("auto_close_ms", 60000),
+        "talk_extend_ms": doorbell.get("talk_extend_ms", 15000) if doorbell.get("talk_extend_enabled", True) else 0,
+        "test": True,
+    })
+
+
+def _panel_socket(hass: HomeAssistant, panel_id: str):
+    socket = hass.data.get(DOMAIN, {}).get(DATA_PANEL_SOCKETS, {}).get(panel_id)
+    if socket is None or socket.closed:
+        raise ValueError("This panel is not connected to Home Assistant right now")
+    return socket
+
+
+async def _ring_test_call(hass: HomeAssistant, panel_id: str, intercom: dict[str, Any]) -> None:
+    """A call from nobody: the real ringing screen, ended by the server.
+
+    It ends after TEST_CALL_SECONDS, or as soon as the panel answers or
+    declines, which the panel socket handles through the same book.
+    """
+    socket = _panel_socket(hass, panel_id)
+    calls = hass.data[DOMAIN].setdefault(DATA_TEST_CALLS, TestCalls())
+    call_id = calls.start(panel_id)
+    await socket.send_json({
+        "type": "intercom_ring",
+        "call_id": call_id,
+        "panel_id": "",
+        "name": "Test call",
+        "ring": intercom.get("ring", "off"),
+        "ring_volume": intercom.get("ring_volume", 70),
+    })
+
+    async def end(_now) -> None:
+        if calls.finish(call_id) and not socket.closed:
+            await socket.send_json({"type": "intercom_end", "call_id": call_id})
+
+    async_call_later(hass, TEST_CALL_SECONDS, end)
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({
+    vol.Required("type"): "nspanel_companion/notifications/test",
+    vol.Required("panel_id"): str,
+    vol.Required("kind"): vol.In(["doorbell", "intercom", "normal", "important"]),
+})
+async def ws_test_notification(hass, connection, msg) -> None:
+    """Try one kind of alert on a real panel, as published.
+
+    Quiet hours apply, because the panel decides them; the result says
+    whether they are in force so a silent test is not taken for a broken one.
+    """
+    panel_id, kind = msg["panel_id"], msg["kind"]
+    try:
+        layout = _registry(hass).layout(panel_id) or {}
+        block = layout.get("notifications") or normalize_notifications(
+            None, layout.get("doorbell") or {}, layout.get("intercom") or {},
+        )
+        _panel_socket(hass, panel_id)
+        if kind == "doorbell":
+            _fire_test_doorbell(hass, panel_id)
+        elif kind == "intercom":
+            await _ring_test_call(hass, panel_id, layout.get("intercom") or {})
+        else:
+            important = kind == "important"
+            await deliver(hass, [panel_id], payload({
+                "title": "Test notification" if not important else "Test: important notification",
+                "message": "Sent from the panel editor to try this panel's notification settings."
+                if not important else "Sent from the panel editor. GOT IT marks it read; LATER leaves it unread.",
+                "importance": kind,
+            }))
+    except ValueError as err:
+        connection.send_error(msg["id"], "not_sent", str(err))
+        return
+    now = dt_util.now()
+    connection.send_result(msg["id"], {
+        "sent": True,
+        "quiet_hours": in_quiet_hours(block, now.hour * 60 + now.minute),
+        # What this kind does inside quiet hours; important has no choice.
+        "behaviour": None if kind == "important" else block.get(kind, {}).get("dnd", "ring"),
+    })
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command({
+    vol.Required("type"): "nspanel_companion/notifications/play",
+    vol.Required("panel_id"): str,
+    vol.Required("sound"): vol.In(sorted((DOORBELL_SOUNDS | NOTIFICATION_SOUNDS) - {"off"})),
+    vol.Required("volume"): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+})
+async def ws_play_sound(hass, connection, msg) -> None:
+    """Play one sound once on a panel's own speaker, before publishing."""
+    sent = await _registry(hass).async_command(
+        msg["panel_id"], "play_sound", sound=msg["sound"], volume=msg["volume"],
+    )
+    if not sent:
+        connection.send_error(msg["id"], "not_sent", "This panel is not connected to Home Assistant right now")
+        return
+    connection.send_result(msg["id"], {"sent": True})
 
 
 @websocket_api.require_admin
@@ -569,6 +680,8 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_panel_diagnostics)
     websocket_api.async_register_command(hass, ws_set_layout)
     websocket_api.async_register_command(hass, ws_test_doorbell)
+    websocket_api.async_register_command(hass, ws_test_notification)
+    websocket_api.async_register_command(hass, ws_play_sound)
     websocket_api.async_register_command(hass, ws_list_pairings)
     websocket_api.async_register_command(hass, ws_approve_pairing)
     websocket_api.async_register_command(hass, ws_rotate_token)

@@ -8,6 +8,7 @@ DATA_PAIRINGS = "pairings"
 # to restart directly; one that does not is exactly the case the add-on's
 # ADB path exists for.
 DATA_PANEL_SOCKETS = "panel_sockets"
+DATA_TEST_CALLS = "test_calls"
 # One call book for the whole integration: who is in a call with whom.
 DATA_CALL_BOOK = "call_book"
 DATA_SCRYPTED_DISCOVERY = "scrypted_discovery"
@@ -20,5 +21,5 @@ PANEL_URL_PATH = "nspanel-companion"
 # Keep in step with the manifest version: HACS offers updates from the manifest,
 # and browsers keep serving the cached panel until this query string changes.
 # A drift between the two ships new code that the browser never loads.
-PANEL_MODULE_URL = "/nspanel_companion/frontend/nspanel-companion-panel.js?v=0.68.0"
+PANEL_MODULE_URL = "/nspanel_companion/frontend/nspanel-companion-panel.js?v=0.69.0"
 PAIRING_TTL_SECONDS = 300

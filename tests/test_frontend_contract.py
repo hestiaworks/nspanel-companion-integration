@@ -126,8 +126,9 @@ class FrontendContractTest(unittest.TestCase):
         # layout is one command, and the doorbell's Scrypted credentials are
         # filled in as it saves — plus five for the talkback add-on: paired,
         # unpaired and asked about exactly like the updater, and a test that
-        # plays a tone at the door.
-        self.assertEqual(30, source.count("@websocket_api.require_admin"))
+        # plays a tone at the door — plus two for notifications: a test of
+        # each kind on a real panel, and a sound played on its speaker.
+        self.assertEqual(32, source.count("@websocket_api.require_admin"))
         self.assertNotIn("connection.require_admin()", source)
         self.assertIn('{"nspanel-companion", "probable-nspanel"}', source)
         self.assertIn('device.get("adb_state") == "device"', source)
@@ -353,7 +354,7 @@ class SettingsAreActuallySaved(unittest.TestCase):
                              ("normal", "NOTIFICATION_SOUNDS"),
                              ("important", "NOTIFICATION_SOUNDS")):
             with self.subTest(kind=kind):
-                self.assertRegex(block, rf'soundField\([^)]*"notify_{kind}_sound"[^)]*{sounds}\)')
+                self.assertRegex(block, rf'soundField\([^)]*"notify_{kind}_sound"[^)]*\b{sounds}\b[^)]*\)')
 
     def test_the_old_sound_controls_are_gone(self):
         # One place for every sound: a second picker for the same setting

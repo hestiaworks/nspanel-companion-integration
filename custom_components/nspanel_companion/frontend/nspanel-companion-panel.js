@@ -59,10 +59,11 @@ const SOUND_BASE = "/nspanel_companion/frontend/sounds";
  * will play, allowing for its speaker. Choosing a doorbell chime by name
  * alone means walking to the panel to find out.
  */
-const soundField = (label, name, value, volumeName, volume, form = "", sounds = RING_SOUNDS) => `
+const soundField = (label, name, value, volumeName, volume, form = "", sounds = RING_SOUNDS, onPanel = false) => `
   <label>${label}<span class="sound-row">
     <select name="${name}" ${form ? `form="${form}"` : ""} data-sound-select>${sounds.map((sound) => `<option value="${sound.value}" ${(value || "off") === sound.value ? "selected" : ""}>${sound.label}</option>`).join("")}</select>
-    <button type="button" class="sound-play" data-sound-play title="Play this sound">&#9654;</button>
+    <button type="button" class="sound-play" data-sound-play title="Play this sound here">&#9654;</button>
+    ${onPanel ? `<button type="button" class="sound-panel" data-sound-panel title="Play this sound once on the panel's speaker">On panel</button>` : ""}
   </span></label>
   <label>${label} volume<input name="${volumeName}" ${form ? `form="${form}"` : ""} type="number" min="0" max="100" value="${Number(volume ?? 70)}" data-sound-volume></label>`;
 
@@ -564,6 +565,65 @@ class NSPanelCompanionPanel extends HTMLElement {
     audio.volume = Math.min(1, Math.max(0, volume / 100));
     this.soundPreview = audio;
     audio.play().catch(() => { this.error = "The browser would not play the sound."; this.render(); });
+  }
+
+  /** The picker and volume beside a sound button, whichever button it is. */
+  soundBeside(button) {
+    const row = button.closest("label")?.parentElement || button.parentElement;
+    const select = row?.querySelector("[data-sound-select]")
+      || button.closest(".sound-row")?.querySelector("[data-sound-select]");
+    const volume = Number(
+      button.closest("label")?.nextElementSibling?.querySelector("[data-sound-volume]")?.value ?? 70,
+    );
+    return { sound: select?.value, volume };
+  }
+
+  /**
+   * Play the chosen sound once on the panel's own speaker.
+   *
+   * Before publishing, so a choice can be heard where it will be heard: the
+   * panel's speaker is smaller than anything the editor is opened on.
+   */
+  async playOnPanel(button) {
+    const { sound, volume } = this.soundBeside(button);
+    if (!sound || sound === "off" || !this.editor) return;
+    button.disabled = true;
+    try {
+      await this.call({
+        type: "nspanel_companion/notifications/play",
+        panel_id: this.editor.panel.panel_id,
+        sound,
+        volume: Math.min(100, Math.max(0, Math.round(volume))),
+      });
+      this.notificationTestMessage = "";
+    } catch (error) {
+      this.notificationTestMessage = error?.message || "The panel could not play the sound.";
+      this.render();
+    } finally { button.disabled = false; }
+  }
+
+  /** One kind of alert, sent to this panel through the real path. */
+  async testNotification(kind) {
+    if (this.busy || !this.editor) return;
+    this.busy = true;
+    this.notificationTestMessage = "";
+    this.render();
+    try {
+      const result = await this.call({
+        type: "nspanel_companion/notifications/test",
+        panel_id: this.editor.panel.panel_id,
+        kind,
+      });
+      const quiet = {
+        silent: "Quiet hours are on now, so the panel shows it without a sound.",
+        suppress: "Quiet hours are on now, so the panel only adds it to its list.",
+      }[result.behaviour];
+      this.notificationTestMessage = kind === "important" && result.quiet_hours
+        ? "Sent. Quiet hours are on now, but important notifications ring anyway."
+        : `Sent to the panel.${result.quiet_hours && quiet ? ` ${quiet}` : ""}`;
+    } catch (error) {
+      this.notificationTestMessage = error?.message || "The test could not be sent.";
+    } finally { this.busy = false; this.render(); }
   }
 
   async restartPanel(device = false) {
@@ -1370,6 +1430,10 @@ class NSPanelCompanionPanel extends HTMLElement {
     this.shadowRoot.querySelector("#talkback-test")?.addEventListener("click", () => this.testTalkback());
     this.shadowRoot.querySelectorAll("[data-sound-play]").forEach((button) =>
       button.addEventListener("click", () => this.previewSound(button)));
+    this.shadowRoot.querySelectorAll("[data-sound-panel]").forEach((button) =>
+      button.addEventListener("click", () => this.playOnPanel(button)));
+    this.shadowRoot.querySelectorAll("[data-notification-test]").forEach((button) =>
+      button.addEventListener("click", () => this.testNotification(button.dataset.notificationTest)));
     this.shadowRoot.querySelector("[data-restart-panel]")?.addEventListener("click", () => this.restartPanel(false));
     this.shadowRoot.querySelector("[data-reboot-panel]")?.addEventListener("click", () => this.restartPanel(true));
     this.shadowRoot.querySelector("#adb-discovery")?.addEventListener("submit", (event) => {
@@ -2214,10 +2278,10 @@ class NSPanelCompanionPanel extends HTMLElement {
     const dnd = { enabled: false, from: "22:00", to: "07:00", ...(block.dnd || {}) };
     const behaviour = (label, name, value) => `<label>${label}<select name="${name}" form="panel-general">${DND_BEHAVIOURS.map((option) => `<option value="${option.value}" ${value === option.value ? "selected" : ""}>${option.label}</option>`).join("")}</select></label>`;
     return `<fieldset class="notifications" aria-label="Notifications"><div class="band-label">Sounds</div>
-          ${soundField("Doorbell", "notify_doorbell_sound", doorbell.sound, "notify_doorbell_volume", doorbell.volume, "panel-general", RING_SOUNDS)}
-          ${soundField("Intercom", "notify_intercom_sound", intercom.sound, "notify_intercom_volume", intercom.volume, "panel-general", RING_SOUNDS)}
-          ${soundField("Notification", "notify_normal_sound", normal.sound, "notify_normal_volume", normal.volume, "panel-general", NOTIFICATION_SOUNDS)}
-          ${soundField("Important", "notify_important_sound", important.sound, "notify_important_volume", important.volume, "panel-general", NOTIFICATION_SOUNDS)}
+          ${soundField("Doorbell", "notify_doorbell_sound", doorbell.sound, "notify_doorbell_volume", doorbell.volume, "panel-general", RING_SOUNDS, true)}
+          ${soundField("Intercom", "notify_intercom_sound", intercom.sound, "notify_intercom_volume", intercom.volume, "panel-general", RING_SOUNDS, true)}
+          ${soundField("Notification", "notify_normal_sound", normal.sound, "notify_normal_volume", normal.volume, "panel-general", NOTIFICATION_SOUNDS, true)}
+          ${soundField("Important", "notify_important_sound", important.sound, "notify_important_volume", important.volume, "panel-general", NOTIFICATION_SOUNDS, true)}
           <small>Doorbell and intercom sounds ring until answered; notification sounds play once. Each picker offers only its own kind. The doorbell does not ring while its incoming audio starts muted.</small>
           <div class="band-label">Do not disturb</div>
           <label class="check"><input name="dnd_enabled" form="panel-general" type="checkbox" ${dnd.enabled ? "checked" : ""}> Quiet hours</label>
@@ -2228,7 +2292,16 @@ class NSPanelCompanionPanel extends HTMLElement {
           ${behaviour("Notification", "dnd_normal", normal.dnd)}
           <label>Important<span class="fixed-setting">Always rings</span></label>
           <small>Important notifications ignore quiet hours &mdash; that is what they are for. Send routine news as a normal notification.</small>
-        </fieldset>`;
+        </fieldset>
+        <div class="settings-card notification-tests">
+          <div class="band-label">Test on this panel</div>
+          <div class="test-buttons">
+            ${[["doorbell", "Doorbell"], ["intercom", "Intercom call"], ["normal", "Notification"], ["important", "Important"]]
+              .map(([kind, label]) => `<button type="button" data-notification-test="${kind}" ${this.busy || this.editor?.panel?.revoked ? "disabled" : ""}>${label}</button>`).join("")}
+          </div>
+          <small>Each one goes through the panel exactly as the real thing does, with the settings as published &mdash; publish first to try a change. Quiet hours apply. The intercom call rings from &ldquo;Test call&rdquo; and ends by itself after a few seconds; answering it just ends it.</small>
+          ${this.notificationTestMessage ? `<div class="notice" role="status">${escapeHtml(this.notificationTestMessage)}</div>` : ""}
+        </div>`;
   }
 
   workspaceChrome(tab) {
@@ -3338,6 +3411,8 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .sound-row { display:flex; gap:var(--s2); align-items:center; }
 .sound-row select { flex:1; }
 .sound-play { flex:0 0 auto; width:var(--control); padding:0; }
+.sound-panel { flex:0 0 auto; white-space:nowrap; }
+.test-buttons { display:flex; flex-wrap:wrap; gap:var(--s2); }
 .control-checks, .widget-fields { display:flex; flex-direction:column; gap:12px; }
 .dashboard-behavior, .system-ui { display:flex; flex-direction:column; }
 .draft-note, .unconfigured-notice { font:400 13px/1.5 var(--font); color:var(--muted); }
