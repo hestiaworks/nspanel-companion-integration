@@ -13,6 +13,9 @@ managing them, and exposes the WebSocket API the panels talk to.
 - Versioned layout schema with validation and per-panel revisions
 - Live entity snapshots, doorbell events, and layout-scoped service calls
 - Diagnostics and administrator commands (token rotation, revoke, remove)
+- Notifications on panels, from automations or any blueprint that picks notify targets
+- Each panel as a device, with its readings and controls as entities
+- A dashboard card for one panel: its wifi and light over the last day, and its controls
 
 ## Requirements
 
@@ -65,6 +68,76 @@ move it onto the faster path, and again after re-pairing, since a panel
 carries the key it was last given.
 
 A panel whose add-on stops answering falls back on its own.
+
+## Notifications
+
+Send to panels with the **NSPanel Companion: Notify panels** action, targeting
+panels, their areas or any of their entities:
+
+```yaml
+action: nspanel_companion.notify
+target:
+  area_id: living_room
+data:
+  title: Washing machine
+  message: Cycle finished
+  importance: normal        # or: important
+```
+
+A **normal** notification is a banner that closes itself; an **important** one
+dims the page and waits for GOT IT or LATER. Both land in the panel's list,
+opened from the badge in its status strip. Optional fields override the panel's
+settings for one notification: `sound`, `duration` (seconds a banner stays) and
+`repeat_every` / `repeat_times`.
+
+Each panel also has two notify entities, *Notifications* and *Important
+notifications*, so anything that sends with `notify.send_message` — including
+blueprints that ask for notify targets — can reach a panel. Choosing the entity
+chooses the importance.
+
+A panel that is offline when a notification is sent does not receive it later:
+nothing is queued.
+
+The panel editor's **Notifications** tab sets, per panel, each kind's sound and
+volume (doorbell, intercom, notification, important notification), how long a
+banner stays, whether an unread or unanswered one repeats, and quiet hours —
+when doorbell, intercom and normal notifications can be set to ring, show
+silently or go straight to the list. Important notifications always ring. Its
+**Test on this panel** buttons send each kind to the real panel, and **On panel**
+plays a sound on the panel's own speaker.
+
+## The panel as a device
+
+Each paired panel is a device with these entities. The wifi signal and the
+ambient light level are on by default; enable the rest on the device page.
+
+| Entity | What it is |
+| --- | --- |
+| Wifi signal | The panel's signal strength, in dBm |
+| Ambient light level | The panel's light sensor, on its own scale (not lux) |
+| Approach | Someone at the panel, from its proximity sensor; holds for 30 seconds |
+| Connected | Whether the panel is connected to Home Assistant |
+| Screen, Brightness | Turn the screen on or off, and set its brightness |
+| Page | The page on screen; choosing one switches the panel to it |
+| Restart app, Reload layout | Buttons |
+| Notifications, Important notifications | Notify targets, see above |
+
+None is categorised, so on Home Assistant's area page everything a panel offers
+appears under the panel's own heading. Turning the screen off takes a few
+seconds: Android lets an app shorten the display timeout but not switch the
+screen off directly.
+
+## Dashboard card
+
+Add **NSPanel Companion** from a dashboard's card picker and choose a panel. The
+card shows the panel's wifi signal and light level over the last 24 hours, with
+their lows and highs, then its approach state and controls. Only entities that
+are enabled appear; a panel that is offline says since when.
+
+```yaml
+type: custom:nspanel-companion-card
+device_id: <the panel's device id>
+```
 
 ## Status
 
