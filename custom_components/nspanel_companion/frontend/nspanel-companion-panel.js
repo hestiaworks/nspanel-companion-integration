@@ -493,11 +493,14 @@ class NSPanelCompanionPanel extends HTMLElement {
         normal: {
           sound: String(values.get("notify_normal_sound") || "off"),
           volume: Number(values.get("notify_normal_volume") ?? 60),
+          duration: Number(values.get("notify_normal_duration") ?? 6),
           dnd: String(values.get("dnd_normal") || "silent"),
         },
         important: {
           sound: String(values.get("notify_important_sound") || "off"),
           volume: Number(values.get("notify_important_volume") ?? 80),
+          repeat_every: Number(values.get("notify_important_repeat_every") ?? 0),
+          repeat_times: Number(values.get("notify_important_repeat_times") ?? 3),
         },
         dnd: {
           enabled: values.get("dnd_enabled") === "on",
@@ -2279,8 +2282,9 @@ class NSPanelCompanionPanel extends HTMLElement {
     const kind = (name, fallback) => ({ ...fallback, ...(block[name] || {}) });
     const doorbell = kind("doorbell", { sound: layout.doorbell?.chime || "off", volume: layout.doorbell?.chime_volume ?? 70, dnd: "ring" });
     const intercom = kind("intercom", { sound: layout.intercom?.ring || "off", volume: layout.intercom?.ring_volume ?? 70, dnd: "ring" });
-    const normal = kind("normal", { sound: "notify_soft", volume: 60, dnd: "silent" });
-    const important = kind("important", { sound: "notify_alert", volume: 80 });
+    const normal = kind("normal", { sound: "notify_soft", volume: 60, dnd: "silent", duration: 6 });
+    const important = kind("important", { sound: "notify_alert", volume: 80, repeat_every: 0, repeat_times: 3 });
+    const choice = (label, name, value, options) => `<label>${label}<select name="${name}" form="panel-general">${options.map(([v, text]) => `<option value="${v}" ${Number(value) === v ? "selected" : ""}>${text}</option>`).join("")}</select></label>`;
     const dnd = { enabled: false, from: "22:00", to: "07:00", ...(block.dnd || {}) };
     const off = dnd.enabled ? "" : " off";
     const behaviour = (label, name, value) => `<label class="quiet-behaviour${off}" data-quiet-behaviour>${label}<select name="${name}" form="panel-general">${DND_BEHAVIOURS.map((option) => `<option value="${option.value}" ${value === option.value ? "selected" : ""}>${option.label}</option>`).join("")}</select></label>`;
@@ -2288,7 +2292,11 @@ class NSPanelCompanionPanel extends HTMLElement {
           ${soundField("Doorbell", "notify_doorbell_sound", doorbell.sound, "notify_doorbell_volume", doorbell.volume, "panel-general", RING_SOUNDS, true)}
           ${soundField("Intercom", "notify_intercom_sound", intercom.sound, "notify_intercom_volume", intercom.volume, "panel-general", RING_SOUNDS, true)}
           ${soundField("Notification", "notify_normal_sound", normal.sound, "notify_normal_volume", normal.volume, "panel-general", NOTIFICATION_SOUNDS, true)}
+          <label>Banner stays for, seconds<input name="notify_normal_duration" form="panel-general" type="number" min="3" max="30" value="${Number(normal.duration ?? 6)}"><small>3–30. A finger on the banner pauses it.</small></label>
           ${soundField("Important", "notify_important_sound", important.sound, "notify_important_volume", important.volume, "panel-general", NOTIFICATION_SOUNDS, true)}
+          ${choice("Repeat sound", "notify_important_repeat_every", important.repeat_every, [[0, "Never"], [30, "Every 30 seconds"], [60, "Every minute"], [120, "Every 2 minutes"], [300, "Every 5 minutes"]])}
+          ${choice("Stop after", "notify_important_repeat_times", important.repeat_times, [[3, "3 times"], [5, "5 times"], [10, "10 times"], [0, "Until answered"]])}
+          <small>An important notification rings again while it is unanswered, quiet hours or not. GOT IT or LATER stops it.</small>
           <small>Doorbell and intercom sounds ring until answered; notification sounds play once. Each picker offers only its own kind. The doorbell does not ring while its incoming audio starts muted.</small>
           <div class="band-label">Do not disturb</div>
           <label class="check"><input name="dnd_enabled" form="panel-general" type="checkbox" ${dnd.enabled ? "checked" : ""}> Quiet hours</label>

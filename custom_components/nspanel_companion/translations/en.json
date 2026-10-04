@@ -80,6 +80,18 @@
         "sound": {
           "name": "Sound",
           "description": "Overrides the panel's sound for this notification only."
+        },
+        "duration": {
+          "name": "Banner duration",
+          "description": "How long a normal notification's banner stays, for this notification only. The panel's setting otherwise."
+        },
+        "repeat_every": {
+          "name": "Repeat sound",
+          "description": "For an important notification: how often its sound rings again while unanswered, for this notification only."
+        },
+        "repeat_times": {
+          "name": "Stop repeating after",
+          "description": "How many times it rings again, or until it is answered."
         }
       }
     }
@@ -113,6 +125,23 @@
         "notify_triple": "Triple",
         "notify_kalimba_run": "Kalimba run",
         "notify_bell_chord": "Bell chord"
+      }
+    },
+    "repeat_every": {
+      "options": {
+        "0": "Never",
+        "30": "Every 30 seconds",
+        "60": "Every minute",
+        "120": "Every 2 minutes",
+        "300": "Every 5 minutes"
+      }
+    },
+    "repeat_times": {
+      "options": {
+        "0": "Until answered",
+        "3": "3 times",
+        "5": "5 times",
+        "10": "10 times"
       }
     }
   }

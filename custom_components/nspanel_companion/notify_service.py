@@ -19,7 +19,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import DATA_PANEL_SOCKETS, DOMAIN
-from .notifications import NOTIFICATION_SOUNDS
+from .notifications import BANNER_SECONDS, NOTIFICATION_SOUNDS, REPEAT_EVERY, REPEAT_TIMES
 
 SERVICE_NOTIFY = "notify"
 IMPORTANCE = ("normal", "important")
@@ -31,6 +31,10 @@ _PAYLOAD = vol.Schema(
         vol.Optional("importance", default="normal"): vol.In(IMPORTANCE),
         # Overrides the type's sound for this one notification.
         vol.Optional("sound"): vol.In(NOTIFICATION_SOUNDS),
+        # And how long its banner stays, or how it repeats if important.
+        vol.Optional("duration"): vol.All(vol.Coerce(int), vol.Range(min=BANNER_SECONDS[0], max=BANNER_SECONDS[1])),
+        vol.Optional("repeat_every"): vol.All(vol.Coerce(int), vol.In(REPEAT_EVERY)),
+        vol.Optional("repeat_times"): vol.All(vol.Coerce(int), vol.In(REPEAT_TIMES)),
     },
     extra=vol.REMOVE_EXTRA,
 )

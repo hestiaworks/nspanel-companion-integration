@@ -47,3 +47,28 @@ notify:
             - notify_kalimba_run
             - notify_bell_chord
           translation_key: sound
+    duration:
+      selector:
+        number:
+          min: 3
+          max: 30
+          unit_of_measurement: s
+    repeat_every:
+      selector:
+        select:
+          options:
+            - "0"
+            - "30"
+            - "60"
+            - "120"
+            - "300"
+          translation_key: repeat_every
+    repeat_times:
+      selector:
+        select:
+          options:
+            - "0"
+            - "3"
+            - "5"
+            - "10"
+          translation_key: repeat_times

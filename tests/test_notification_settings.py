@@ -89,6 +89,34 @@ class Validation(unittest.TestCase):
         self.assertEqual("off", block["doorbell"]["sound"])
 
 
+
+class Timing(unittest.TestCase):
+    """How long a banner stays, and whether an important one rings again."""
+
+    def test_a_banner_stays_six_seconds_unless_told(self):
+        # The approved design's figure, kept as the default.
+        self.assertEqual(6, notifications.normalize_notifications({}, {}, {})["normal"]["duration"])
+
+    def test_a_banner_may_stay_three_to_thirty_seconds(self):
+        block = notifications.normalize_notifications({"normal": {"duration": 20}}, {}, {})
+        self.assertEqual(20, block["normal"]["duration"])
+        for wrong in (2, 31, "long"):
+            with self.subTest(duration=wrong), self.assertRaises(ValueError):
+                notifications.normalize_notifications({"normal": {"duration": wrong}}, {}, {})
+
+    def test_an_important_one_does_not_repeat_unless_told(self):
+        block = notifications.normalize_notifications({}, {}, {})
+        self.assertEqual(0, block["important"]["repeat_every"])
+        self.assertEqual(3, block["important"]["repeat_times"])
+
+    def test_repeats_are_chosen_from_a_short_list(self):
+        block = notifications.normalize_notifications(
+            {"important": {"repeat_every": 60, "repeat_times": 0}}, {}, {})
+        self.assertEqual((60, 0), (block["important"]["repeat_every"], block["important"]["repeat_times"]))
+        for field, wrong in (("repeat_every", 45), ("repeat_times", 7)):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                notifications.normalize_notifications({"important": {field: wrong}}, {}, {})
+
 class Layout(unittest.TestCase):
     """Wherever a layout is validated, the block is there."""
 

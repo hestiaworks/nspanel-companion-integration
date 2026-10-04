@@ -310,6 +310,8 @@ class SettingsAreActuallySaved(unittest.TestCase):
         # Sliders render their own input, so take their key as the name too.
         names = set(re.findall(r'name="([a-z0-9_]+)"', block))
         names |= set(re.findall(r'brightnessSlider\("([a-z0-9_]+)"', block))
+        # And the dropdowns built by the notification tab's choice() helper.
+        names |= set(re.findall(r'choice\("[^"]*", "([a-z0-9_]+)"', block))
         # And sound pickers: a select and a volume each.
         for sound, volume in re.findall(r'soundField\("[^"]*", "([a-z0-9_]+)", [^,]+, "([a-z0-9_]+)"', block):
             names |= {sound, volume}

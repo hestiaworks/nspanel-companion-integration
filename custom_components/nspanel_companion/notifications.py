@@ -54,11 +54,19 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     # quietly on a wall for weeks must not start ringing because it updated.
     "doorbell": {"sound": "off", "volume": 70, "dnd": "ring"},
     "intercom": {"sound": "off", "volume": 70, "dnd": "ring"},
-    "normal": {"sound": "notify_soft", "volume": 60, "dnd": "silent"},
+    # Six seconds is the approved design's figure, kept as the default.
+    "normal": {"sound": "notify_soft", "volume": 60, "dnd": "silent", "duration": 6},
     # No dnd: an important notification always rings. That is the point of
-    # it, so it is not a setting.
-    "important": {"sound": "notify_alert", "volume": 80},
+    # it, so it is not a setting. It rings once unless asked to repeat.
+    "important": {"sound": "notify_alert", "volume": 80, "repeat_every": 0, "repeat_times": 3},
 }
+
+#: How long a banner may stay, in seconds.
+BANNER_SECONDS = (3, 30)
+#: How often an unanswered important notification rings again; 0 is never.
+REPEAT_EVERY = (0, 30, 60, 120, 300)
+#: How many times it rings again; 0 is until it is answered.
+REPEAT_TIMES = (0, 3, 5, 10)
 DND_DEFAULT = {"enabled": False, "from": "22:00", "to": "07:00"}
 
 _SOUNDS_FOR = {
@@ -108,6 +116,29 @@ def _volume(value: Any, what: str) -> int:
     return number
 
 
+def _whole(value: Any, what: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{what} must be a whole number")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} must be a whole number") from None
+
+
+def _choice_range(value: Any, bounds: tuple[int, int], what: str) -> int:
+    number = _whole(value, what)
+    if not bounds[0] <= number <= bounds[1]:
+        raise ValueError(f"{what} must be {bounds[0]}–{bounds[1]} seconds")
+    return number
+
+
+def _choice(value: Any, allowed: tuple[int, ...], what: str) -> int:
+    number = _whole(value, what)
+    if number not in allowed:
+        raise ValueError(f"{what} must be one of {', '.join(map(str, allowed))}")
+    return number
+
+
 def _legacy(doorbell: dict[str, Any], intercom: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """What the old per-feature fields said, where they said anything."""
     legacy: dict[str, dict[str, Any]] = {"doorbell": {}, "intercom": {}}
@@ -150,6 +181,11 @@ def normalize_notifications(
             if behaviour not in DND_BEHAVIOURS:
                 raise ValueError(f"Invalid do-not-disturb behaviour for {_LABELS[kind].lower()}")
             entry["dnd"] = behaviour
+        if "duration" in default:
+            entry["duration"] = _choice_range(merged["duration"], BANNER_SECONDS, "Banner duration")
+        if "repeat_every" in default:
+            entry["repeat_every"] = _choice(merged["repeat_every"], REPEAT_EVERY, "Repeat interval")
+            entry["repeat_times"] = _choice(merged["repeat_times"], REPEAT_TIMES, "Repeat count")
         block[kind] = entry
     dnd = raw.get("dnd") or {}
     if not isinstance(dnd, dict):

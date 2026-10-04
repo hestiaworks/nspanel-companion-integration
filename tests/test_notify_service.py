@@ -102,6 +102,27 @@ class Payload(unittest.TestCase):
         self.assertNotEqual(first["id"], second["id"])
 
 
+
+class Overrides(unittest.TestCase):
+    """One notification may stay longer, or ring again, than the panel's settings say."""
+
+    def test_neither_is_sent_unless_given(self):
+        value = notify_service.payload({"message": "hello"})
+        self.assertNotIn("duration", value)
+        self.assertNotIn("repeat_every", value)
+
+    def test_a_duration_is_seconds_within_the_panels_range(self):
+        self.assertEqual(20, notify_service.payload({"message": "x", "duration": 20})["duration"])
+        with self.assertRaises(vol.Invalid):
+            notify_service.payload({"message": "x", "duration": 90})
+
+    def test_repeats_use_the_settings_choices(self):
+        value = notify_service.payload(
+            {"message": "x", "importance": "important", "repeat_every": 120, "repeat_times": 5})
+        self.assertEqual((120, 5), (value["repeat_every"], value["repeat_times"]))
+        with self.assertRaises(vol.Invalid):
+            notify_service.payload({"message": "x", "repeat_every": 45})
+
 class FakeSocket:
     def __init__(self, closed=False):
         self.closed = closed
