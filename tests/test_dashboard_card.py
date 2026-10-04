@@ -177,6 +177,15 @@ class CardContract(unittest.TestCase):
         body = self.source.split("const STYLE = `", 1)[1].split("`;", 1)[0]
         literals = re.findall(r"#[0-9a-fA-F]{3,8}\b", body)
         self.assertEqual([], literals, "colours must come from Home Assistant's theme variables")
+    def test_it_is_offered_in_the_card_picker(self):
+        self.assertIn("window.customCards", self.source)
+        self.assertIn('type: "nspanel-companion-card"', self.source)
+        self.assertIn('name: "NSPanel Companion"', self.source)
+
+    def test_the_editor_picks_a_device_of_this_integration(self):
+        self.assertIn('customElements.define("nspanel-companion-card-editor"', self.source)
+        self.assertIn('device: { integration: "nspanel_companion" }', self.source)
+        self.assertIn('"config-changed"', self.source)
 
 
 if __name__ == "__main__":

@@ -376,3 +376,55 @@ class NSPanelCompanionCard extends Base {
 if (globalThis.customElements && !customElements.get("nspanel-companion-card")) {
   customElements.define("nspanel-companion-card", NSPanelCompanionCard);
 }
+
+/**
+ * The card's settings: one device picker, limited to panels.
+ *
+ * Built on ha-form, which Home Assistant has loaded by the time a card
+ * editor opens, so the picker is the same one every other card uses.
+ */
+class NSPanelCompanionCardEditor extends Base {
+  setConfig(config) {
+    this._config = { ...config };
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  _render() {
+    if (!this._hass || !this._config) return;
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.computeLabel = () => "Panel";
+      this._form.addEventListener("value-changed", (event) => {
+        this._config = { ...this._config, ...event.detail.value };
+        this.dispatchEvent(new CustomEvent("config-changed", {
+          detail: { config: this._config }, bubbles: true, composed: true,
+        }));
+      });
+      this.appendChild(this._form);
+    }
+    this._form.hass = this._hass;
+    this._form.data = this._config;
+    this._form.schema = [{ name: "device_id", required: true, selector: { device: { integration: "nspanel_companion" } } }];
+  }
+}
+
+if (globalThis.customElements && !customElements.get("nspanel-companion-card-editor")) {
+  customElements.define("nspanel-companion-card-editor", NSPanelCompanionCardEditor);
+}
+
+if (globalThis.window) {
+  window.customCards = window.customCards || [];
+  if (!window.customCards.some((card) => card.type === "nspanel-companion-card")) {
+    window.customCards.push({
+      type: "nspanel-companion-card",
+      name: "NSPanel Companion",
+      description: "One panel's wifi and light over the last day, and its screen, page and restart.",
+      preview: true,
+    });
+  }
+}
