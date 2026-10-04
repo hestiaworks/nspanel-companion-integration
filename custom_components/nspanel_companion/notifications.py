@@ -55,7 +55,9 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "doorbell": {"sound": "off", "volume": 70, "dnd": "ring"},
     "intercom": {"sound": "off", "volume": 70, "dnd": "ring"},
     # Six seconds is the approved design's figure, kept as the default.
-    "normal": {"sound": "notify_soft", "volume": 60, "dnd": "silent", "duration": 6},
+    # It may also come back while unread, banner and all.
+    "normal": {"sound": "notify_soft", "volume": 60, "dnd": "silent", "duration": 6,
+               "repeat_every": 0, "repeat_times": 3},
     # No dnd: an important notification always rings. That is the point of
     # it, so it is not a setting. It rings once unless asked to repeat.
     "important": {"sound": "notify_alert", "volume": 80, "repeat_every": 0, "repeat_times": 3},
@@ -63,7 +65,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
 
 #: How long a banner may stay, in seconds.
 BANNER_SECONDS = (3, 30)
-#: How often an unanswered important notification rings again; 0 is never.
+#: How often an unanswered notification comes back; 0 is never.
 REPEAT_EVERY = (0, 30, 60, 120, 300)
 #: How many times it rings again; 0 is until it is answered.
 REPEAT_TIMES = (0, 3, 5, 10)

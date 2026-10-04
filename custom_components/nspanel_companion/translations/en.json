@@ -87,7 +87,7 @@
         },
         "repeat_every": {
           "name": "Repeat sound",
-          "description": "For an important notification: how often its sound rings again while unanswered, for this notification only."
+          "description": "How often it comes back while unread (a regular one) or unanswered (an important one), for this notification only."
         },
         "repeat_times": {
           "name": "Stop repeating after",

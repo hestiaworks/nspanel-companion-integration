@@ -117,6 +117,19 @@ class Timing(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 notifications.normalize_notifications({"important": {field: wrong}}, {}, {})
 
+
+class NormalRepeats(unittest.TestCase):
+    def test_a_regular_notification_does_not_repeat_unless_told(self):
+        block = notifications.normalize_notifications({}, {}, {})
+        self.assertEqual((0, 3), (block["normal"]["repeat_every"], block["normal"]["repeat_times"]))
+
+    def test_it_takes_the_same_choices_as_an_important_one(self):
+        block = notifications.normalize_notifications(
+            {"normal": {"repeat_every": 300, "repeat_times": 0}}, {}, {})
+        self.assertEqual((300, 0), (block["normal"]["repeat_every"], block["normal"]["repeat_times"]))
+        with self.assertRaises(ValueError):
+            notifications.normalize_notifications({"normal": {"repeat_every": 45}}, {}, {})
+
 class Layout(unittest.TestCase):
     """Wherever a layout is validated, the block is there."""
 
