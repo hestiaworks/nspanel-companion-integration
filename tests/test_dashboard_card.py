@@ -146,5 +146,38 @@ class Registration(unittest.TestCase):
             self.assertEqual(set(), roles - keys)
 
 
+class CardContract(unittest.TestCase):
+    """What the element must do that only a browser could show, pinned in source."""
+
+    source = CARD.read_text() if CARD.exists() else ""
+
+    def test_it_defines_the_element_once(self):
+        self.assertIn('customElements.define("nspanel-companion-card"', self.source)
+        self.assertIn('customElements.get("nspanel-companion-card")', self.source)
+
+    def test_it_calls_only_the_services_the_entities_offer(self):
+        for call in ('"light", "turn_on"', '"light", "turn_off"',
+                     '"select", "select_option"', '"button", "press"'):
+            with self.subTest(call=call):
+                self.assertIn(call, self.source)
+
+    def test_restart_confirms_inside_the_card(self):
+        self.assertIn("Tap again to restart", self.source)
+        self.assertNotIn("confirm(", self.source)
+
+    def test_brightness_is_sent_on_release_not_while_dragging(self):
+        self.assertIn('addEventListener("change"', self.source)
+        self.assertIn("this._dragging", self.source)
+
+    def test_an_unknown_panel_is_said_not_thrown(self):
+        self.assertIn("This panel was not found", self.source)
+
+    def test_colours_come_from_the_theme(self):
+        import re
+        body = self.source.split("const STYLE = `", 1)[1].split("`;", 1)[0]
+        literals = re.findall(r"#[0-9a-fA-F]{3,8}\b", body)
+        self.assertEqual([], literals, "colours must come from Home Assistant's theme variables")
+
+
 if __name__ == "__main__":
     unittest.main()
