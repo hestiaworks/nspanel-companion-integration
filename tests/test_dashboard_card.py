@@ -167,7 +167,7 @@ class CardContract(unittest.TestCase):
 
     def test_brightness_is_sent_on_release_not_while_dragging(self):
         self.assertIn('addEventListener("change"', self.source)
-        self.assertIn("this._dragging", self.source)
+        self.assertIn('this._hold("drag")', self.source)
 
     def test_an_unknown_panel_is_said_not_thrown(self):
         self.assertIn("This panel was not found", self.source)
@@ -186,6 +186,126 @@ class CardContract(unittest.TestCase):
         self.assertIn('customElements.define("nspanel-companion-card-editor"', self.source)
         self.assertIn('device: { integration: "nspanel_companion" }', self.source)
         self.assertIn('"config-changed"', self.source)
+
+@unittest.skipUnless(NODE, "node is not installed")
+class RealHistory(unittest.TestCase):
+    """What Home Assistant actually sends: only changes, never a closing row."""
+
+    def test_a_reading_that_never_moved_is_a_flat_line_across_the_day(self):
+        # One row: the state at the start of the window, unchanged since.
+        path = run(
+            "card.sparkPath(card.anchored([{t: 0, v: 7}], 7, 100), 100, 40, 0, 100)")
+        self.assertEqual("M0.0 20.0 L100.0 20.0", path)
+
+    def test_the_line_runs_to_now_not_to_the_last_change(self):
+        # Last change at a quarter of the window: the line still reaches the end.
+        path = run(
+            "card.sparkPath(card.anchored([{t: 0, v: 0}, {t: 25, v: 10}], 10, 100), 100, 40, 0, 100)")
+        self.assertTrue(path.endswith("L100.0 2.0"), path)
+        self.assertIn("L25.0 2.0", path)
+
+    def test_an_unreadable_live_value_does_not_extend_the_line(self):
+        self.assertEqual(
+            [{"t": 0, "v": 1}],
+            run("card.anchored([{t: 0, v: 1}], Number.NaN, 100)"),
+        )
+
+
+FAKE = r"""
+const calls = [];
+const fakeHass = (ids) => ({
+  devices: { dev: { id: "dev", name: "Panel" }, other: { id: "other", name: "Other" } },
+  areas: {},
+  entities: Object.fromEntries(ids.map(([id, key, device]) => [id,
+    { entity_id: id, device_id: device ?? "dev", platform: "nspanel_companion", translation_key: key }])),
+  states: Object.fromEntries(ids.map(([id]) => [id, { state: "-50", last_changed: "2026-10-04T10:00:00Z", attributes: {} }])),
+  callWS: (message) => { calls.push(message.entity_ids); return new Promise((done) => { pending.push(done); }); },
+  callService: () => {},
+});
+const pending = [];
+const make = () => {
+  const el = new card.NSPanelCompanionCard();
+  el.renders = 0;
+  el.attachShadow = () => { el.shadowRoot = { set innerHTML(v) { el.renders += 1; }, getElementById: () => null }; };
+  return el;
+};
+const settle = () => new Promise((done) => setTimeout(done, 0));
+"""
+
+
+def drive(body: str):
+    return run("await (async () => {" + FAKE + body + "})()")
+
+
+@unittest.skipUnless(NODE, "node is not installed")
+class Holding(unittest.TestCase):
+    """While someone is using a control, updates wait instead of rebuilding it."""
+
+    def test_an_update_while_held_waits_and_lands_on_release(self):
+        result = drive("""
+          const el = make();
+          el.setConfig({ device_id: "dev" });
+          const hass = fakeHass([["sensor.w", "wifi_signal"]]);
+          el.hass = hass;
+          const before = el.renders;
+          el._hold("select");
+          el.hass = { ...hass, states: { "sensor.w": { state: "-60", last_changed: "2026-10-04T11:00:00Z", attributes: {} } } };
+          const during = el.renders;
+          el._release("select");
+          return { held: during - before, after: el.renders - during };
+        """)
+        self.assertEqual({"held": 0, "after": 1}, result)
+
+    def test_a_drag_that_ends_where_it_began_still_lets_go(self):
+        # No change event fires for it; pointerup must release on its own.
+        source = CARD.read_text()
+        for event in ("pointerup", "pointercancel", "blur"):
+            with self.subTest(event=event):
+                self.assertIn(f'addEventListener("{event}"', source)
+
+    def test_history_arriving_while_held_does_not_redraw(self):
+        result = drive("""
+          const el = make();
+          el.setConfig({ device_id: "dev" });
+          el.hass = fakeHass([["sensor.w", "wifi_signal"]]);
+          el._hold("drag");
+          const before = el.renders;
+          pending.shift()([]);
+          await settle();
+          return el.renders - before;
+        """)
+        self.assertEqual(0, result)
+
+
+@unittest.skipUnless(NODE, "node is not installed")
+class HistoryFollowsTheEntities(unittest.TestCase):
+    def test_enabling_a_reading_fetches_its_history_at_once(self):
+        result = drive("""
+          const el = make();
+          el.setConfig({ device_id: "dev" });
+          el.hass = fakeHass([["sensor.w", "wifi_signal"]]);
+          pending.shift()({});
+          await settle();
+          el.hass = fakeHass([["sensor.w", "wifi_signal"], ["sensor.l", "ambient_light"]]);
+          return calls;
+        """)
+        self.assertEqual([["sensor.w"], ["sensor.w", "sensor.l"]], result)
+
+    def test_a_reply_for_the_previous_panel_is_discarded(self):
+        result = drive("""
+          const el = make();
+          el.setConfig({ device_id: "dev" });
+          const both = fakeHass([["sensor.w", "wifi_signal"], ["sensor.o", "wifi_signal", "other"]]);
+          el.hass = both;
+          el.setConfig({ device_id: "other" });
+          el.hass = both;
+          pending.shift()({ "sensor.w": [{ s: "-50", lu: 1 }, { s: "-51", lu: 2 }] });
+          await settle();
+          return { kept: Object.keys(el._history), calls };
+        """)
+        self.assertEqual([], result["kept"])
+        self.assertEqual([["sensor.w"], ["sensor.o"]], result["calls"])
+
 
 
 if __name__ == "__main__":

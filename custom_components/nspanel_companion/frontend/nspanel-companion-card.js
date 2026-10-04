@@ -75,11 +75,12 @@ export function extremes(points) {
  * A reading that never moved draws through the middle: a dark room reads the
  * same all day, and dividing by its zero range would draw nothing.
  */
-export function sparkPath(points, width, height) {
+export function sparkPath(points, width, height, start, end) {
   if (points.length < 2) return "";
   const inset = 2;
-  const t0 = points[0].t;
-  const span = points[points.length - 1].t - t0 || 1;
+  // Against the window when one is given, so 24 h is always the full width.
+  const t0 = start ?? points[0].t;
+  const span = (end ?? points[points.length - 1].t) - t0 || 1;
   const values = points.map((point) => point.v);
   const low = Math.min(...values);
   const high = Math.max(...values);
@@ -89,6 +90,18 @@ export function sparkPath(points, width, height) {
   return points
     .map((point, index) => `${index ? "L" : "M"}${((point.t - t0) / span * width).toFixed(1)} ${y(point.v).toFixed(1)}`)
     .join(" ");
+}
+
+/**
+ * The recorded points, carried on to now.
+ *
+ * Home Assistant records changes only, so a reading that has not moved since
+ * the window opened comes back as one row, and the line would stop at the
+ * last change instead of reaching the present.
+ */
+export function anchored(points, live, now) {
+  if (!Number.isFinite(live)) return points;
+  return [...points, { t: now, v: live }];
 }
 
 /** "just now", "12 min ago", "3 h ago". */
@@ -151,25 +164,50 @@ const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", min
 
 const Base = globalThis.HTMLElement ?? class {};
 
-class NSPanelCompanionCard extends Base {
+export class NSPanelCompanionCard extends Base {
   setConfig(config) {
     if (!config || !config.device_id) throw new Error("Choose a panel");
     this._config = config;
     this._history = {};
     this._fetchedAt = 0;
+    this._fetchedKey = "";
     this._signature = "";
     this._render();
   }
 
+  /**
+   * Someone is using a control: a slider mid-drag, an open page list, an
+   * armed restart. Redrawing would rebuild it under their finger, so updates
+   * wait and land when they let go.
+   */
+  _hold(reason) {
+    (this._holds ??= new Set()).add(reason);
+  }
+
+  _release(reason) {
+    this._holds?.delete(reason);
+    if (this._holds?.size || !this._pending) return;
+    this._pending = false;
+    this._signature = this._signatureOf(this._hass);
+    this._render();
+  }
+
+  _held() {
+    return Boolean(this._holds?.size);
+  }
+
   set hass(hass) {
     this._hass = hass;
-    if (this._dragging) return;
+    this._fetchHistory();
+    if (this._held()) {
+      this._pending = true;
+      return;
+    }
     const signature = this._signatureOf(hass);
     if (signature !== this._signature) {
       this._signature = signature;
       this._render();
     }
-    this._fetchHistory();
   }
 
   getCardSize() {
@@ -203,8 +241,11 @@ class NSPanelCompanionCard extends Base {
   async _fetchHistory() {
     const roles = this._roles();
     const ids = [roles.wifi_signal, roles.ambient_light].filter(Boolean);
+    const key = ids.join("|");
     if (!ids.length || !this._hass?.callWS || this._fetching) return;
-    if (Date.now() - this._fetchedAt < HISTORY_REFRESH_MS) return;
+    // Refetch at once when the readings change — one enabled on the device
+    // page, or another panel chosen — not only when the data is old.
+    if (key === this._fetchedKey && Date.now() - this._fetchedAt < HISTORY_REFRESH_MS) return;
     this._fetching = true;
     try {
       const end = new Date();
@@ -217,14 +258,22 @@ class NSPanelCompanionCard extends Base {
         minimal_response: true,
         no_attributes: true,
       });
+      const current = [this._roles().wifi_signal, this._roles().ambient_light].filter(Boolean).join("|");
+      if (current !== key) return;  // a reply for readings no longer shown
       this._history = Object.fromEntries(ids.map((id) => [id, historyPoints(result?.[id])]));
       this._fetchedAt = Date.now();
-      this._render();
+      this._fetchedKey = key;
+      if (this._held()) this._pending = true;
+      else this._render();
     } catch (error) {
       // A card that cannot read history still shows the live values.
       this._fetchedAt = Date.now();
+      this._fetchedKey = key;
     } finally {
       this._fetching = false;
+      // The readings changed while that request was out: ask for the new ones.
+      const now = [this._roles().wifi_signal, this._roles().ambient_light].filter(Boolean).join("|");
+      if (now !== key) this._fetchHistory();
     }
   }
 
@@ -274,8 +323,9 @@ class NSPanelCompanionCard extends Base {
   _graph(id, unit, describe) {
     const state = this._state(id);
     const live = Number(state?.state);
-    const points = this._history[id] || [];
-    const path = sparkPath(points, 100, 40);
+    const now = Date.now();
+    const points = anchored(this._history[id] || [], live, now);
+    const path = sparkPath(points, 100, 40, now - HISTORY_HOURS * 3600 * 1000, now);
     const range = extremes(points);
     const value = Number.isFinite(live) ? live.toLocaleString() : "—";
     const word = describe?.(live);
@@ -341,16 +391,26 @@ class NSPanelCompanionCard extends Base {
       // While a finger is on the slider, state updates would redraw the card
       // and yank it back; the value is sent once, on release.
       level.addEventListener("input", () => {
-        this._dragging = true;
+        this._hold("drag");
         root.getElementById("display-pct").textContent = `${level.value}%`;
       });
       level.addEventListener("change", () => {
-        this._dragging = false;
         this._call("light", "turn_on", { entity_id: roles.display, brightness_pct: Number(level.value) });
+        this._release("drag");
       });
+      // A drag that ends where it began fires no change event; without these
+      // the card would wait for a release that never comes.
+      level.addEventListener("pointerup", () => this._release("drag"));
+      level.addEventListener("pointercancel", () => this._release("drag"));
+      level.addEventListener("blur", () => this._release("drag"));
     }
-    root.getElementById("page")?.addEventListener("change", (event) =>
-      this._call("select", "select_option", { entity_id: roles.page, option: event.target.value }));
+    const page = root.getElementById("page");
+    page?.addEventListener("focus", () => this._hold("select"));
+    page?.addEventListener("blur", () => this._release("select"));
+    page?.addEventListener("change", (event) => {
+      this._call("select", "select_option", { entity_id: roles.page, option: event.target.value });
+      this._release("select");
+    });
     root.getElementById("reload")?.addEventListener("click", () =>
       this._call("button", "press", { entity_id: roles.reload_layout }));
     const restart = root.getElementById("restart");
@@ -360,15 +420,18 @@ class NSPanelCompanionCard extends Base {
       if (!restart.classList.contains("armed")) {
         restart.classList.add("armed");
         restart.textContent = "Tap again to restart";
+        this._hold("restart");
         setTimeout(() => {
           restart.classList.remove("armed");
           restart.textContent = "Restart app";
+          this._release("restart");
         }, 4000);
         return;
       }
       this._call("button", "press", { entity_id: roles.restart_app });
       restart.classList.remove("armed");
       restart.textContent = "Restart app";
+      this._release("restart");
     });
   }
 }
