@@ -49,10 +49,13 @@ const select = opt("select", null);
  * second one made a broken flow look like a working one.
  */
 const clicks = args.flatMap((arg, i) => (arg === "--click" ? [args[i + 1]] : []));
+/** Render the dashboard card instead of the admin panel: all | defaults | offline. */
+const card = opt("card", null);
 
 const work = mkdtempSync(join(tmpdir(), "nspanel-preview-"));
 writeFileSync(join(work, "panel.js"), `${execFileSync("cat", [PANEL])}`);
 writeFileSync(join(work, "fixture.js"), `${execFileSync("cat", [join(HERE, "fixture.js")])}`);
+writeFileSync(join(work, "card.js"), `${execFileSync("cat", [resolve(HERE, "../../custom_components/nspanel_companion/frontend/nspanel-companion-card.js")])}`);
 writeFileSync(join(work, "harness.html"), `<!doctype html>
 <meta charset="utf-8">
 <!-- Home Assistant's own document carries this; without it phone emulation
@@ -63,6 +66,42 @@ writeFileSync(join(work, "harness.html"), `<!doctype html>
 <style>html,body{margin:0;padding:0;background:${light ? "#F4F5F3" : "#0E1012"}}</style>
 <div id="host"></div>
 <script type="module">
+${card === null ? "" : `
+  // A dashboard is not this panel's page: Home Assistant's theme variables
+  // and an ha-card frame, so the card is seen as it will be on a dashboard.
+  const theme = ${light} ? {
+    "--primary-text-color": "#212121", "--secondary-text-color": "#727272", "--divider-color": "rgba(0,0,0,.12)",
+    "--primary-color": "#03a9f4", "--card-background-color": "#fff", "--success-color": "#43a047",
+    "--warning-color": "#ffa600", "--error-color": "#db4437", "--text-primary-color": "#fff",
+  } : {
+    "--primary-text-color": "#e1e1e1", "--secondary-text-color": "#9b9b9b", "--divider-color": "rgba(225,225,225,.12)",
+    "--primary-color": "#03a9f4", "--card-background-color": "#1c1c1c", "--success-color": "#43a047",
+    "--warning-color": "#ffa600", "--error-color": "#db4437", "--text-primary-color": "#fff",
+  };
+  Object.entries(theme).forEach(([key, value]) => document.documentElement.style.setProperty(key, value));
+  document.body.style.background = ${light} ? "#fafafa" : "#111";
+  document.body.style.fontFamily = "Roboto, system-ui, sans-serif";
+  customElements.define("ha-card", class extends HTMLElement {
+    connectedCallback() {
+      this.style.cssText = "display:block;background:var(--card-background-color);border-radius:12px;border:1px solid var(--divider-color);";
+    }
+  });
+  const { cardHass } = await import("./fixture.js");
+  await import("./card.js");
+  const host = document.getElementById("host");
+  host.style.cssText = "max-width:500px;margin:24px auto;padding:0 16px";
+  const cardEl = document.createElement("nspanel-companion-card");
+  cardEl.setConfig({ device_id: "dev-living" });
+  cardEl.hass = cardHass(${JSON.stringify(card)});
+  host.appendChild(cardEl);
+  await new Promise((done) => setTimeout(done, 500));
+  if (!cardEl.shadowRoot?.querySelector("ha-card")) {
+    document.body.innerHTML = '<pre style="color:#D24A3F">card did not render</pre>';
+    document.title = "RENDER FAILED";
+  }
+  document.title = document.title === "RENDER FAILED" ? document.title : "CARD";
+  throw "card mode: the admin-panel steps below do not apply";
+`}
   import { fakeHass } from "./fixture.js";
   await import("./panel.js");
   location.hash = ${JSON.stringify(route)};

@@ -118,3 +118,55 @@ export function fakeHass() {
     },
   };
 }
+
+/**
+ * A Home Assistant for the dashboard card: one panel device and its entities.
+ *
+ * `all` has every entity enabled, `defaults` only the two that ship enabled,
+ * `offline` is `all` with the panel disconnected an hour ago.
+ */
+export function cardHass(variant = "all") {
+  const device = "dev-living";
+  const now = Date.now();
+  const hourAgo = new Date(now - 3_600_000).toISOString();
+  const recent = new Date(now - 12 * 60_000).toISOString();
+  const roles = {
+    wifi_signal: ["sensor.living_room_wifi_signal", "-48", {}],
+    ambient_light: ["sensor.living_room_ambient_light_level", "12204", {}],
+    approach: ["binary_sensor.living_room_approach", "off", {}],
+    connected: ["binary_sensor.living_room_connected", variant === "offline" ? "off" : "on", {}],
+    display: ["light.living_room_display", "on", { brightness: 204 }],
+    page: ["select.living_room_page", "climate", { options: ["climate", "weather", "controls", "door"] }],
+    restart_app: ["button.living_room_restart_app", "unknown", {}],
+    reload_layout: ["button.living_room_reload_layout", "unknown", {}],
+  };
+  const enabled = variant === "defaults" ? ["wifi_signal", "ambient_light"] : Object.keys(roles);
+  const entities = {};
+  const states = {};
+  for (const role of enabled) {
+    const [id, state, attributes] = roles[role];
+    entities[id] = { entity_id: id, device_id: device, platform: "nspanel_companion", translation_key: role };
+    states[id] = {
+      entity_id: id, state, attributes,
+      last_changed: role === "connected" && variant === "offline" ? hourAgo : recent,
+    };
+  }
+  // A day of readings: wifi wandering around −50, light following daylight.
+  const series = (id) => Array.from({ length: 145 }, (_, i) => {
+    const t = (now - (144 - i) * 600_000) / 1000;
+    const hour = new Date(t * 1000).getHours() + new Date(t * 1000).getMinutes() / 60;
+    const s = id.includes("wifi")
+      ? String(Math.round(-50 - 6 * Math.sin(i / 9) - (i % 17 === 0 ? 8 : 0)))
+      : String(Math.max(0, Math.round(23000 * Math.sin(Math.PI * Math.max(0, Math.min(1, (hour - 6) / 14)))) + 340));
+    return { s: i === 30 ? "unavailable" : s, lu: t };
+  });
+  return {
+    devices: { [device]: { id: device, name: "NSPanel 1A6F", name_by_user: "Living Room", area_id: "living", sw_version: "1.7.0-beta.3",
+      identifiers: [["nspanel_companion", "panel-1a6f"]] } },
+    areas: { living: { area_id: "living", name: "Living Room" } },
+    entities,
+    states,
+    callWS: async (message) => Object.fromEntries(message.entity_ids.map((id) => [id, series(id)])),
+    callService: async (domain, service, data) => { window.__called = [domain, service, data]; },
+  };
+}

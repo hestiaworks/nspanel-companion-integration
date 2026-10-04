@@ -282,7 +282,7 @@ class NSPanelCompanionCard extends Base {
     return `<div class="reading">
       <div class="label">${unit === "dBm" ? "Wifi" : "Light"}</div>
       <div class="value">${escapeHtml(value)}${unit && Number.isFinite(live) ? `<small>${unit}</small>` : ""}</div>
-      ${word ? `<div class="word ${word.tone}">${word.word}</div>` : ""}
+      ${word ? `<div class="word ${word.tone}">${word.word}</div>` : `<div class="word" aria-hidden="true">&nbsp;</div>`}
       ${path ? `<svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path class="area" d="${path} L100 40 L0 40 Z"></path><path class="line" d="${path}"></path></svg>`
         : `<div class="empty">No history yet</div>`}
       ${range ? `<div class="extremes"><div>Min ${escapeHtml(range.min.v.toLocaleString())}<br>${clock(range.min.t)}</div><div>Max ${escapeHtml(range.max.v.toLocaleString())}<br>${clock(range.max.t)}</div></div>` : ""}
