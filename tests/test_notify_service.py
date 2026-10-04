@@ -41,6 +41,9 @@ DEVICES = [
     device("dev-bedroom", "bedroom", "upstairs"),
     # Not ours: a lamp in the same area must not become a panel.
     types.SimpleNamespace(id="dev-lamp", area_id="ground-floor", identifiers={("hue", "x")}),
+    # Some integrations register identifiers with three parts; Home
+    # Assistant accepts them, so one in the house must not break targeting.
+    types.SimpleNamespace(id="dev-odd", area_id="ground-floor", identifiers={("legacy", "a", "b")}),
 ]
 ENTITY_DEVICES = {"sensor.bedroom_panel_wifi_signal": "dev-bedroom"}
 

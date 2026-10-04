@@ -63,7 +63,13 @@ def resolve_panels(
     panel_for: dict[str, str] = {}
     area_of: dict[str, str | None] = {}
     for device in devices:
-        panel = next((ident for domain, ident in device.identifiers if domain == DOMAIN), None)
+        # Indexed rather than unpacked: Home Assistant does not hold every
+        # integration to two-part identifiers, and one of three parts in the
+        # house would otherwise fail every notification.
+        panel = next(
+            (str(ident[1]) for ident in device.identifiers if len(ident) >= 2 and ident[0] == DOMAIN),
+            None,
+        )
         if panel is not None:
             panel_for[device.id] = panel
             area_of[device.id] = device.area_id
