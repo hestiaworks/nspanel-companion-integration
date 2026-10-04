@@ -8,7 +8,7 @@ from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 
-from .const import PANEL_COMPONENT, PANEL_MODULE_URL, PANEL_URL_PATH
+from .const import CARD_MODULE_URL, PANEL_COMPONENT, PANEL_MODULE_URL, PANEL_URL_PATH
 
 
 async def async_setup_frontend_assets(hass: HomeAssistant) -> None:
@@ -18,6 +18,9 @@ async def async_setup_frontend_assets(hass: HomeAssistant) -> None:
         StaticPathConfig("/nspanel_companion/frontend", str(static_dir), True),
     ])
     frontend.add_extra_js_url(hass, PANEL_MODULE_URL)
+    # The dashboard card, for every user: a card is placed on dashboards
+    # non-admins see, where the admin panel never loads.
+    frontend.add_extra_js_url(hass, CARD_MODULE_URL)
 
 
 def async_register_panel(hass: HomeAssistant) -> None:

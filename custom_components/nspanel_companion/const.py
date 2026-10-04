@@ -22,4 +22,6 @@ PANEL_URL_PATH = "nspanel-companion"
 # and browsers keep serving the cached panel until this query string changes.
 # A drift between the two ships new code that the browser never loads.
 PANEL_MODULE_URL = "/nspanel_companion/frontend/nspanel-companion-panel.js?v=0.69.0"
+# The dashboard card, busted by the same version for the same reason.
+CARD_MODULE_URL = "/nspanel_companion/frontend/nspanel-companion-card.js?v=0.69.0"
 PAIRING_TTL_SECONDS = 300

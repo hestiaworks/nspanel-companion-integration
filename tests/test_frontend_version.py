@@ -24,6 +24,12 @@ class PanelModuleVersionTest(unittest.TestCase):
             f"Panel module URL {url!r} does not carry version {version!r}",
         )
 
+    def test_the_card_module_is_busted_by_the_same_version(self):
+        version = json.loads((COMPONENT / "manifest.json").read_text())["version"]
+        const = (COMPONENT / "const.py").read_text()
+        url = re.search(r'CARD_MODULE_URL = "([^"]+)"', const).group(1)
+        self.assertTrue(url.endswith(f"?v={version}"), f"{url!r} does not carry {version!r}")
+
 
 if __name__ == "__main__":
     unittest.main()
