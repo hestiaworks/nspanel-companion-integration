@@ -18,8 +18,12 @@ jobs:
           python-version: "3.12"
       - name: Test integration and frontend contract
         run: |
+          # The notify action is validated with voluptuous, as Home Assistant
+          # does; the runner does not have it.
+          python3 -m pip install --quiet voluptuous
           python3 -m unittest discover -s tests -p 'test_*.py'
           node --check custom_components/nspanel_companion/frontend/nspanel-companion-panel.js
+          node --check custom_components/nspanel_companion/frontend/nspanel-companion-card.js
           for f in tools/*.js; do node --check "$f"; done
 
   hassfest:

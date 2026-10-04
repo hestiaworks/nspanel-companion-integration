@@ -28,8 +28,12 @@ jobs:
           fi
       - name: Test before publishing
         run: |
+          # The notify action is validated with voluptuous, as Home Assistant
+          # does; the runner does not have it.
+          python3 -m pip install --quiet voluptuous
           python3 -m unittest discover -s tests -p 'test_*.py'
           node --check custom_components/nspanel_companion/frontend/nspanel-companion-panel.js
+          node --check custom_components/nspanel_companion/frontend/nspanel-companion-card.js
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
