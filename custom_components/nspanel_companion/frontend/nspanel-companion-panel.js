@@ -1337,8 +1337,13 @@ class NSPanelCompanionPanel extends HTMLElement {
         const below = window.innerHeight - rect.bottom - 8;
         const up = below < height && rect.top - 8 > below;
         wrap.classList.toggle("up", up);
-        list.style.width = `${rect.width}px`;
-        list.style.left = `${rect.left}px`;
+        // At least the field's width, and wider when an option needs it: a
+        // field sized to a short choice ("Soft") cropped the longer ones.
+        // Kept on screen by shifting left rather than by cropping.
+        list.style.minWidth = `${rect.width}px`;
+        list.style.width = "max-content";
+        list.style.maxWidth = `${window.innerWidth - 16}px`;
+        list.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 8 - list.offsetWidth))}px`;
         list.style.maxHeight = `${Math.max(120, Math.min(260, up ? rect.top - 8 : below))}px`;
         list.style.top = up ? "auto" : `${rect.bottom - 1}px`;
         list.style.bottom = up ? `${window.innerHeight - rect.top - 1}px` : "auto";
@@ -3408,8 +3413,12 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
 .mode-choices summary { padding:10px var(--s3); font:600 12px/1 var(--font); color:var(--muted); cursor:pointer; }
 .mode-choices summary b { float:right; color:var(--accent-ink); }
 .mode-choices .inline-checks, .mode-choices small { padding:0 var(--s3) 10px; }
-.sound-row { display:flex; gap:var(--s2); align-items:center; }
-.sound-row select { flex:1; }
+.sound-row { display:flex; gap:var(--s2); align-items:center; min-width:0; }
+/* The native select is hidden inside the editor's own field, so the wrap
+   is what has to grow; sizing the select did nothing. */
+.sound-row > .select-wrap { flex:1 1 auto; min-width:0; }
+/* Picker, preview and "On panel" need more than the usual 220 px column. */
+.workspace-panel fieldset.notifications > label { grid-template-columns:minmax(0,1fr) 340px; }
 .sound-play { flex:0 0 auto; width:var(--control); padding:0; }
 .sound-panel { flex:0 0 auto; white-space:nowrap; }
 .test-buttons { display:flex; flex-wrap:wrap; gap:var(--s2); }
@@ -3724,7 +3733,8 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
   /* A settings row is a label beside a 220px control. At this width the
      label wraps to three lines to make room for it, so the control takes a
      line of its own instead — the label is the thing being read. */
-  .settings-card > label, .workspace-panel fieldset > label {
+  .settings-card > label, .workspace-panel fieldset > label,
+  .workspace-panel fieldset.notifications > label {
     grid-template-columns:minmax(0,1fr); gap:8px; }
   .settings-card > label > :is(input,select,textarea),
   .workspace-panel fieldset > label > :is(input,select,textarea),
