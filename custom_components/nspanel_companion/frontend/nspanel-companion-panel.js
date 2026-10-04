@@ -552,15 +552,9 @@ class NSPanelCompanionPanel extends HTMLElement {
    * than anything this is being auditioned on.
    */
   previewSound(button) {
-    const row = button.closest("label")?.parentElement || button.parentElement;
-    const select = row?.querySelector("[data-sound-select]")
-      || button.closest(".sound-row")?.querySelector("[data-sound-select]");
-    const sound = select?.value;
+    const { sound, volume } = this.soundBeside(button);
     this.soundPreview?.pause();
     if (!sound || sound === "off") return;
-    const volume = Number(
-      button.closest("label")?.nextElementSibling?.querySelector("[data-sound-volume]")?.value ?? 70,
-    );
     const audio = new Audio(`${SOUND_BASE}/${sound}.mp3`);
     audio.volume = Math.min(1, Math.max(0, volume / 100));
     this.soundPreview = audio;
@@ -569,9 +563,10 @@ class NSPanelCompanionPanel extends HTMLElement {
 
   /** The picker and volume beside a sound button, whichever button it is. */
   soundBeside(button) {
-    const row = button.closest("label")?.parentElement || button.parentElement;
-    const select = row?.querySelector("[data-sound-select]")
-      || button.closest(".sound-row")?.querySelector("[data-sound-select]");
+    // The button's own row, and nothing wider: the label's parent is the
+    // whole section on the Notifications tab, and its first picker is the
+    // doorbell's, which every row's buttons then played.
+    const select = button.closest(".sound-row")?.querySelector("[data-sound-select]");
     const volume = Number(
       button.closest("label")?.nextElementSibling?.querySelector("[data-sound-volume]")?.value ?? 70,
     );

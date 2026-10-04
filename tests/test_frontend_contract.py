@@ -356,6 +356,15 @@ class SettingsAreActuallySaved(unittest.TestCase):
             with self.subTest(kind=kind):
                 self.assertRegex(block, rf'soundField\([^)]*"notify_{kind}_sound"[^)]*\b{sounds}\b[^)]*\)')
 
+    def test_a_sound_button_reads_its_own_row(self):
+        # Every row's buttons once played the first picker in the section.
+        source = self.PANEL.read_text()
+        start = source.index("  soundBeside(button) {")
+        body = source[start:source.index("\n  }\n", start)]
+        self.assertIn('button.closest(".sound-row")', body)
+        self.assertNotIn("parentElement", body)
+        self.assertIn("this.soundBeside(button)", source[source.index("  previewSound(button) {"):])
+
     def test_the_old_sound_controls_are_gone(self):
         # One place for every sound: a second picker for the same setting
         # would publish whichever was read last.
