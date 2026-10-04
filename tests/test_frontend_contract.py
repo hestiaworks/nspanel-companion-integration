@@ -302,11 +302,19 @@ class SettingsAreActuallySaved(unittest.TestCase):
 
     PANEL = ROOT / "custom_components/nspanel_companion/frontend/nspanel-companion-panel.js"
 
-    def _names_in(self, css_class: str) -> set:
+    def _block(self, css_class: str) -> str:
+        """Every fieldset of this class, joined: a tab may split one into groups."""
         source = self.PANEL.read_text()
-        start = source.index(f'<fieldset class="{css_class}"')
-        end = source.index("</fieldset>", start)
-        block = source[start:end]
+        parts, at = [], 0
+        while (start := source.find(f'<fieldset class="{css_class}"', at)) != -1:
+            end = source.index("</fieldset>", start)
+            parts.append(source[start:end])
+            at = end
+        assert parts, f"no {css_class} fieldset"
+        return "\n".join(parts)
+
+    def _names_in(self, css_class: str) -> set:
+        block = self._block(css_class)
         # Sliders render their own input, so take their key as the name too.
         names = set(re.findall(r'name="([a-z0-9_]+)"', block))
         names |= set(re.findall(r'brightnessSlider\("([a-z0-9_]+)"', block))
@@ -349,9 +357,7 @@ class SettingsAreActuallySaved(unittest.TestCase):
         self.assertIn("notifications: structuredClone(this.editor.layout.notifications", source)
 
     def test_a_sound_picker_offers_only_its_own_category(self):
-        source = self.PANEL.read_text()
-        start = source.index('<fieldset class="notifications"')
-        block = source[start:source.index("</fieldset>", start)]
+        block = self._block("notifications")
         for kind, sounds in (("doorbell", "RING_SOUNDS"), ("intercom", "RING_SOUNDS"),
                              ("normal", "NOTIFICATION_SOUNDS"),
                              ("important", "NOTIFICATION_SOUNDS")):
@@ -366,6 +372,29 @@ class SettingsAreActuallySaved(unittest.TestCase):
         self.assertIn('button.closest(".sound-row")', body)
         self.assertNotIn("parentElement", body)
         self.assertIn("this.soundBeside(button)", source[source.index("  previewSound(button) {"):])
+
+    def test_each_kind_has_its_own_group(self):
+        # One long list blended four kinds of alert into one config.
+        block = self._block("notifications")
+        for kind in ("Doorbell", "Intercom", "Notification", "Important notification", "Quiet hours"):
+            with self.subTest(kind=kind):
+                self.assertIn(f'aria-label="{kind}"', block)
+
+    def test_every_volume_is_a_slider(self):
+        source = self.PANEL.read_text()
+        start = source.index("const soundField")
+        helper = source[start:source.index("`;", start)]
+        self.assertIn('type="range"', helper)
+        self.assertIn("data-sound-volume", helper)
+        self.assertNotIn('type="number"', helper)
+
+    def test_both_repeats_read_the_same(self):
+        # A regular and an important notification repeat the same way; the
+        # editor says so with the same words.
+        block = self._block("notifications")
+        self.assertEqual(2, block.count('choice("Repeat", '))
+        self.assertNotIn("Show again", block)
+        self.assertNotIn("Repeat sound", block)
 
     def test_dimmed_rows_do_not_trap_their_open_lists(self):
         # Opacity (or a filter or transform) makes a row its own layer: the

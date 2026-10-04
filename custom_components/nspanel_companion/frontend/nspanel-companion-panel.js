@@ -65,7 +65,10 @@ const soundField = (label, name, value, volumeName, volume, form = "", sounds = 
     <button type="button" class="sound-play" data-sound-play title="Play this sound here">&#9654;</button>
     ${onPanel ? `<button type="button" class="sound-panel" data-sound-panel title="Play this sound once on the panel's speaker">On panel</button>` : ""}
   </span></label>
-  <label>${label} volume<input name="${volumeName}" ${form ? `form="${form}"` : ""} type="number" min="0" max="100" value="${Number(volume ?? 70)}" data-sound-volume></label>`;
+  <label class="slider-row">Volume<span class="slider-field">
+    <input name="${volumeName}" ${form ? `form="${form}"` : ""} type="range" min="0" max="100" step="1" value="${Number(volume ?? 70)}" data-sound-volume data-slider-for="${volumeName}">
+    <output data-slider-value="${volumeName}">${Number(volume ?? 70)}%</output>
+  </span></label>`;
 
 const DEFAULT_LAYOUT = (revision) => ({
   schema_version: 1,
@@ -2292,29 +2295,39 @@ class NSPanelCompanionPanel extends HTMLElement {
     const dnd = { enabled: false, from: "22:00", to: "07:00", ...(block.dnd || {}) };
     const off = dnd.enabled ? "" : " off";
     const behaviour = (label, name, value) => `<label class="quiet-behaviour${off}" data-quiet-behaviour>${label}<select name="${name}" form="panel-general">${DND_BEHAVIOURS.map((option) => `<option value="${option.value}" ${value === option.value ? "selected" : ""}>${option.label}</option>`).join("")}</select></label>`;
-    return `<fieldset class="notifications" aria-label="Notifications"><div class="band-label">Sounds</div>
-          ${soundField("Doorbell", "notify_doorbell_sound", doorbell.sound, "notify_doorbell_volume", doorbell.volume, "panel-general", RING_SOUNDS, true)}
-          ${soundField("Intercom", "notify_intercom_sound", intercom.sound, "notify_intercom_volume", intercom.volume, "panel-general", RING_SOUNDS, true)}
-          ${soundField("Notification", "notify_normal_sound", normal.sound, "notify_normal_volume", normal.volume, "panel-general", NOTIFICATION_SOUNDS, true)}
+    // One group per kind of alert, each with everything that kind does —
+    // its sound, how long and how often, and what it does in quiet hours —
+    // and the quiet-hours window itself last, since every group refers to it.
+    return `<fieldset class="notifications" aria-label="Doorbell"><div class="band-label">Doorbell</div>
+          ${soundField("Sound", "notify_doorbell_sound", doorbell.sound, "notify_doorbell_volume", doorbell.volume, "panel-general", RING_SOUNDS, true)}
+          ${behaviour("During quiet hours", "dnd_doorbell", doorbell.dnd)}
+          <small>Rings until someone answers. It stays silent while the doorbell's incoming audio starts muted.</small>
+        </fieldset>
+        <fieldset class="notifications" aria-label="Intercom"><div class="band-label">Intercom</div>
+          ${soundField("Sound", "notify_intercom_sound", intercom.sound, "notify_intercom_volume", intercom.volume, "panel-general", RING_SOUNDS, true)}
+          ${behaviour("During quiet hours", "dnd_intercom", intercom.dnd)}
+          <small>Rings until the call is answered or declined.</small>
+        </fieldset>
+        <fieldset class="notifications" aria-label="Notification"><div class="band-label">Notification</div>
+          ${soundField("Sound", "notify_normal_sound", normal.sound, "notify_normal_volume", normal.volume, "panel-general", NOTIFICATION_SOUNDS, true)}
           <label>Banner stays for, seconds<input name="notify_normal_duration" form="panel-general" type="number" min="3" max="30" value="${Number(normal.duration ?? 6)}"><small>3–30. A finger on the banner pauses it.</small></label>
-          ${choice("Show again", "notify_normal_repeat_every", normal.repeat_every, everyChoices)}
+          ${choice("Repeat", "notify_normal_repeat_every", normal.repeat_every, everyChoices)}
           ${choice("Stop after", "notify_normal_repeat_times", normal.repeat_times, timesChoices.map(([v, text]) => [v, v === 0 ? "Until read" : text]))}
-          <small>While it is unread, the banner comes back with its sound. Opening it or marking it read stops it. In quiet hours it follows the Notification setting below.</small>
-          ${soundField("Important", "notify_important_sound", important.sound, "notify_important_volume", important.volume, "panel-general", NOTIFICATION_SOUNDS, true)}
-          ${choice("Repeat sound", "notify_important_repeat_every", important.repeat_every, everyChoices)}
+          <small>While it is unread, the banner comes back with its sound. Opening it or marking it read stops it.</small>
+          ${behaviour("During quiet hours", "dnd_normal", normal.dnd)}
+        </fieldset>
+        <fieldset class="notifications" aria-label="Important notification"><div class="band-label">Important notification</div>
+          ${soundField("Sound", "notify_important_sound", important.sound, "notify_important_volume", important.volume, "panel-general", NOTIFICATION_SOUNDS, true)}
+          ${choice("Repeat", "notify_important_repeat_every", important.repeat_every, everyChoices)}
           ${choice("Stop after", "notify_important_repeat_times", important.repeat_times, timesChoices)}
-          <small>An important notification rings again while it is unanswered, quiet hours or not. GOT IT or LATER stops it.</small>
-          <small>Doorbell and intercom sounds ring until answered; notification sounds play once. Each picker offers only its own kind. The doorbell does not ring while its incoming audio starts muted.</small>
-          <div class="band-label">Do not disturb</div>
+          <small>While it is unanswered, its sound plays again; the sheet stays on screen. GOT IT or LATER stops it.</small>
+          <label class="quiet-behaviour${off}" data-quiet-behaviour>During quiet hours<span class="fixed-setting">Always rings</span></label>
+          <small>Important notifications ignore quiet hours &mdash; that is what they are for. Send routine news as a normal notification.</small>
+        </fieldset>
+        <fieldset class="notifications" aria-label="Quiet hours"><div class="band-label">Quiet hours</div>
           <label class="check"><input name="dnd_enabled" form="panel-general" type="checkbox" ${dnd.enabled ? "checked" : ""}> Quiet hours</label>
           <div class="hours"><label>From<input name="dnd_from" form="panel-general" type="time" value="${escapeHtml(String(dnd.from))}"></label><label>To<input name="dnd_to" form="panel-general" type="time" value="${escapeHtml(String(dnd.to))}"></label></div>
-          <small>A window may cross midnight. Outside it, or while quiet hours are off, everything rings with the sounds above.</small>
-          <div class="band-label">During quiet hours</div>
-          ${behaviour("Doorbell", "dnd_doorbell", doorbell.dnd)}
-          ${behaviour("Intercom", "dnd_intercom", intercom.dnd)}
-          ${behaviour("Notification", "dnd_normal", normal.dnd)}
-          <label class="quiet-behaviour${off}" data-quiet-behaviour>Important<span class="fixed-setting">Always rings</span></label>
-          <small>Important notifications ignore quiet hours &mdash; that is what they are for. Send routine news as a normal notification.</small>
+          <small>A window may cross midnight. Inside it, each kind does what its &ldquo;During quiet hours&rdquo; says above; outside it, or while quiet hours are off, everything rings as usual.</small>
         </fieldset>
         <div class="settings-card notification-tests">
           <div class="band-label">Test on this panel</div>
