@@ -29,6 +29,21 @@ notify:
             - "off"
             - notify_soft
             - notify_chime
-            - notify_alert
             - notify_ping
+            - notify_bright
+            - notify_confirm
+            - notify_query
+            - notify_glass
+            - notify_kalimba
+            - notify_knock
+            - notify_vibraphone
+            - notify_drop
+            - notify_music_box
+            - notify_alert
+            - notify_double
+            - notify_rise
+            - notify_confirm_long
+            - notify_triple
+            - notify_kalimba_run
+            - notify_bell_chord
           translation_key: sound

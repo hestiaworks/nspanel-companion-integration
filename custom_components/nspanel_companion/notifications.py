@@ -10,10 +10,33 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# Rings: they loop until answered, so they are written to.
-DOORBELL_SOUNDS = {"off", "chime_1", "chime_2", "chime_3"}
+# Rings: they loop until answered, so they are written to. The three chimes
+# predate the rest; everything else was synthesised for this project, or is
+# from Kenney's Interface Sounds (CC0), so the files carry no licence terms.
+DOORBELL_SOUNDS = {"off", "chime_1", "chime_2", "chime_3", "ding_dong", "three_tone", "westminster", "marimba", "tubular", "vibraphone", "shop_door", "music_box", "kalimba", "bell_chords"}
 # Notifications: played once, and short.
-NOTIFICATION_SOUNDS = {"off", "notify_soft", "notify_chime", "notify_alert", "notify_ping"}
+NOTIFICATION_SOUNDS = {
+    "off",
+    "notify_soft",
+    "notify_chime",
+    "notify_ping",
+    "notify_bright",
+    "notify_confirm",
+    "notify_query",
+    "notify_glass",
+    "notify_kalimba",
+    "notify_knock",
+    "notify_vibraphone",
+    "notify_drop",
+    "notify_music_box",
+    "notify_alert",
+    "notify_double",
+    "notify_rise",
+    "notify_confirm_long",
+    "notify_triple",
+    "notify_kalimba_run",
+    "notify_bell_chord",
+}
 
 # The three sounds the first audio build shipped, since replaced. A layout
 # still naming one is normalised to silence rather than refused: the sound is

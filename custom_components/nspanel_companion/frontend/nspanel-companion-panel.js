@@ -5,6 +5,16 @@ const RING_SOUNDS = [
   { value: "chime_1", label: "Chime 1" },
   { value: "chime_2", label: "Chime 2" },
   { value: "chime_3", label: "Chime 3" },
+  { value: "ding_dong", label: "Ding-dong" },
+  { value: "three_tone", label: "Three-tone" },
+  { value: "westminster", label: "Westminster" },
+  { value: "marimba", label: "Marimba" },
+  { value: "tubular", label: "Tubular bells" },
+  { value: "vibraphone", label: "Vibraphone" },
+  { value: "shop_door", label: "Shop door" },
+  { value: "music_box", label: "Music box" },
+  { value: "kalimba", label: "Kalimba" },
+  { value: "bell_chords", label: "Bell chords" },
 ];
 
 // Short, played once. Kept apart from the rings because they are a
@@ -13,8 +23,23 @@ const NOTIFICATION_SOUNDS = [
   { value: "off", label: "No sound" },
   { value: "notify_soft", label: "Soft" },
   { value: "notify_chime", label: "Chime" },
-  { value: "notify_alert", label: "Alert" },
   { value: "notify_ping", label: "Ping" },
+  { value: "notify_bright", label: "Bright" },
+  { value: "notify_confirm", label: "Confirm" },
+  { value: "notify_query", label: "Query" },
+  { value: "notify_glass", label: "Glass" },
+  { value: "notify_kalimba", label: "Kalimba" },
+  { value: "notify_knock", label: "Knock" },
+  { value: "notify_vibraphone", label: "Vibraphone" },
+  { value: "notify_drop", label: "Drop" },
+  { value: "notify_music_box", label: "Music box" },
+  { value: "notify_alert", label: "Alert" },
+  { value: "notify_double", label: "Double bell" },
+  { value: "notify_rise", label: "Rise" },
+  { value: "notify_confirm_long", label: "Confirm, long" },
+  { value: "notify_triple", label: "Triple" },
+  { value: "notify_kalimba_run", label: "Kalimba run" },
+  { value: "notify_bell_chord", label: "Bell chord" },
 ];
 
 // What a kind of alert does during do not disturb.

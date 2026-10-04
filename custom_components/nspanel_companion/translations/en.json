@@ -83,8 +83,23 @@
         "off": "Silent",
         "notify_soft": "Soft",
         "notify_chime": "Chime",
+        "notify_ping": "Ping",
+        "notify_bright": "Bright",
+        "notify_confirm": "Confirm",
+        "notify_query": "Query",
+        "notify_glass": "Glass",
+        "notify_kalimba": "Kalimba",
+        "notify_knock": "Knock",
+        "notify_vibraphone": "Vibraphone",
+        "notify_drop": "Drop",
+        "notify_music_box": "Music box",
         "notify_alert": "Alert",
-        "notify_ping": "Ping"
+        "notify_double": "Double bell",
+        "notify_rise": "Rise",
+        "notify_confirm_long": "Confirm, long",
+        "notify_triple": "Triple",
+        "notify_kalimba_run": "Kalimba run",
+        "notify_bell_chord": "Bell chord"
       }
     }
   }
