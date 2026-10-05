@@ -517,6 +517,9 @@ class NSPanelCompanionPanel extends HTMLElement {
         enabled: values.get("intercom_enabled") === "on",
         noise_suppression: values.get("intercom_noise_suppression") === "on",
         auto_gain: values.get("intercom_auto_gain") === "on",
+        auto_answer: values.get("intercom_auto_answer") === "on",
+        auto_answer_linger_seconds: Number(values.get("intercom_auto_answer_linger") ?? 10),
+        auto_answer_max_seconds: Number(values.get("intercom_auto_answer_max") ?? 60),
       },
     };
     if (!name || !this.editor) return;
@@ -989,7 +992,9 @@ class NSPanelCompanionPanel extends HTMLElement {
       screen_off_after_seconds: Number(this.editor.layout.screen_off_after_seconds ?? 30),
       wifi_reconnect_enabled: Boolean(this.editor.layout.wifi_reconnect_enabled),
       wifi_reconnect_below_dbm: Number(this.editor.layout.wifi_reconnect_below_dbm ?? -70),
-      intercom: { enabled: Boolean(this.editor.layout.intercom?.enabled) },
+      // The whole block: sending { enabled } alone reverted every other
+      // intercom setting the general save had just written.
+      intercom: structuredClone(this.editor.layout.intercom || { enabled: false }),
       ...(this.editor.layout.notifications
         ? { notifications: structuredClone(this.editor.layout.notifications) } : {}),
       theme_mode: this.editor.draftThemeMode,
@@ -1442,6 +1447,10 @@ class NSPanelCompanionPanel extends HTMLElement {
       button.addEventListener("click", () => this.playOnPanel(button)));
     // Dimmed, not disabled, while quiet hours are off: a disabled field is
     // left out of the form, which would reset these choices on the next save.
+    this.shadowRoot.querySelector('input[name="intercom_auto_answer"]')?.addEventListener("change", (event) => {
+      this.shadowRoot.querySelectorAll("[data-auto-answer-row]").forEach((row) =>
+        row.classList.toggle("off", !event.target.checked));
+    });
     this.shadowRoot.querySelector('input[name="dnd_enabled"]')?.addEventListener("change", (event) => {
       this.shadowRoot.querySelectorAll("[data-quiet-behaviour]").forEach((row) =>
         row.classList.toggle("off", !event.target.checked));
@@ -2617,6 +2626,11 @@ class NSPanelCompanionPanel extends HTMLElement {
           <label class="check"><input name="intercom_noise_suppression" form="panel-general" type="checkbox" ${layout.intercom?.noise_suppression !== false ? "checked" : ""}> Noise suppression</label>
           <label class="check"><input name="intercom_auto_gain" form="panel-general" type="checkbox" ${layout.intercom?.auto_gain !== false ? "checked" : ""}> Automatic gain</label>
           <small>This panel has no audio effects of its own, so both are done in software by WebRTC. Turning them off is worth trying only if a call sounds processed or the far end cuts in and out.</small>
+          <div class="band-label">Answering</div>
+          <label class="check"><input name="intercom_auto_answer" form="panel-general" type="checkbox" ${layout.intercom?.auto_answer ? "checked" : ""}> Answer calls automatically</label>
+          <small>The caller is heard at once, like a voice message. This panel's microphone stays off until someone here taps Talk, which turns it into an ordinary call. Not during quiet hours unless the intercom is set to ring there.</small>
+          <label class="auto-answer-row${layout.intercom?.auto_answer ? "" : " off"}" data-auto-answer-row>Stay on screen after a message, seconds<input name="intercom_auto_answer_linger" form="panel-general" type="number" min="0" max="60" value="${Number(layout.intercom?.auto_answer_linger_seconds ?? 10)}"><small>0–60. Then the panel returns to the page it was on.</small></label>
+          <label class="auto-answer-row${layout.intercom?.auto_answer ? "" : " off"}" data-auto-answer-row>Longest message<select name="intercom_auto_answer_max" form="panel-general">${[[30, "30 seconds"], [60, "1 minute"], [120, "2 minutes"], [300, "5 minutes"]].map(([v, text]) => `<option value="${v}" ${Number(layout.intercom?.auto_answer_max_seconds ?? 60) === v ? "selected" : ""}>${text}</option>`).join("")}</select><small>A message nobody answers ends by itself after this.</small></label>
         </div>
         </div>
         <aside class="stack">
@@ -3290,6 +3304,8 @@ select { appearance:none; padding-right:30px; background-image:linear-gradient(t
    open list see-through and let the rows below draw over it. */
 .quiet-behaviour.off { color:var(--disabled); }
 .quiet-behaviour.off .select-field, .quiet-behaviour.off .fixed-setting { color:var(--disabled); }
+.auto-answer-row.off { color:var(--disabled); }
+.auto-answer-row.off .select-field, .auto-answer-row.off input { color:var(--disabled); }
 .hours { display:flex; flex-wrap:wrap; gap:var(--s4); align-items:end; }
 .hours > label { display:flex; flex-direction:column; gap:6px; min-width:0;
   font:400 14px/1.4 var(--font); }

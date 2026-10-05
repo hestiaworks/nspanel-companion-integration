@@ -8,6 +8,9 @@ from typing import Any
 # Four rows of two on a 480 px sheet.
 MAX_CLIMATE_MODES = 8
 
+#: How long an auto-answered message may run before the panel ends it.
+AUTO_ANSWER_MAX_SECONDS = (30, 60, 120, 300)
+
 from .notifications import (
     DOORBELL_SOUNDS as RING_SOUNDS,
     RETIRED_SOUNDS,
@@ -24,6 +27,13 @@ def _bounded_int(value: Any, what: str, low: int, high: int) -> int:
         raise ValueError(f"{what} must be a whole number") from None
     if not low <= number <= high:
         raise ValueError(f"{what} must be between {low} and {high}")
+    return number
+
+
+def _auto_answer_max(value: Any) -> int:
+    number = _bounded_int(value, "Longest message", 0, 3600)
+    if number not in AUTO_ANSWER_MAX_SECONDS:
+        raise ValueError("Longest message must be 30, 60, 120 or 300 seconds")
     return number
 
 
@@ -369,6 +379,13 @@ def validate_layout(value: Any) -> dict[str, Any]:
         # anything here.
         "noise_suppression": bool(intercom.get("noise_suppression", True)),
         "auto_gain": bool(intercom.get("auto_gain", True)),
+        # Answered by itself, microphone muted, so the caller is heard like a
+        # voice message. Off by default: a panel on a wall for weeks must not
+        # start opening calls because it was updated.
+        "auto_answer": bool(intercom.get("auto_answer", False)),
+        "auto_answer_linger_seconds": _bounded_int(
+            intercom.get("auto_answer_linger_seconds", 10), "Message linger", 0, 60),
+        "auto_answer_max_seconds": _auto_answer_max(intercom.get("auto_answer_max_seconds", 60)),
     }
     # Every sound the panel makes, in one block. The old per-feature fields
     # are the block's starting point for a layout that has none, and are
