@@ -16,6 +16,9 @@ managing them, and exposes the WebSocket API the panels talk to.
 - Notifications on panels, from automations or any blueprint that picks notify targets
 - Each panel as a device, with its readings and controls as entities
 - A dashboard card for one panel: its wifi and light over the last day, and its controls
+- Panel-to-panel intercom, with an option to answer calls automatically: the caller
+  is heard like a voice message, and the receiving panel's microphone stays off
+  until someone there taps Talk
 
 ## Requirements
 
